@@ -1,133 +1,66 @@
 import React from 'react';
-import { useState } from 'react';
-import axios from 'axios';
-import SearchBar from './components/SearchBar';
-import ResultsDisplay from './components/ResultsDisplay';
-import AssetDetailModal from './components/AssetDetailModal';
+import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom';
+import SearchPage from './pages/SearchPage';
+import RemixTreePage from './pages/RemixTreePage';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
-const PAGE_LIMIT = 20;
-
-function App() {
-  const [results, setResults] = useState([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [error, setError] = useState(null);
-  const [hasSearched, setHasSearched] = useState(false);
-  const [selectedAsset, setSelectedAsset] = useState(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  
-  const [offset, setOffset] = useState(0);
-  const [hasMore, setHasMore] = useState(false);
-  const [totalResults, setTotalResults] = useState(0); // State baru untuk menyimpan total hasil
-  const [currentQuery, setCurrentQuery] = useState('');
-  const [currentMediaType, setCurrentMediaType] = useState('all');
-
-  const handleSearch = async (query, mediaType, newSearch = true) => {
-    if (!query) return;
-
-    newSearch ? setIsLoading(true) : setIsLoadingMore(true);
-    setError(null);
-    setHasSearched(true);
-
-    if (newSearch) {
-      setResults([]);
-      setOffset(0);
-      setTotalResults(0);
-      setCurrentQuery(query);
-      setCurrentMediaType(mediaType);
-    }
-
-    try {
-      const currentOffset = newSearch ? 0 : offset;
-      const params = new URLSearchParams({
-        query: query,
-        limit: PAGE_LIMIT,
-        offset: currentOffset,
-      });
-
-      if (mediaType && mediaType !== 'all') {
-        params.append('mediaType', mediaType);
-      }
-
-      const response = await axios.get(
-        `${API_BASE_URL}/search?${params.toString()}`,
-      );
-      
-      const newResults = response.data.data || [];
-      const total = response.data.total || 0;
-      
-      const updatedResults = newSearch ? newResults : [...results, ...newResults];
-      const newOffset = updatedResults.length;
-
-      setResults(updatedResults);
-      setOffset(newOffset);
-      
-      // ▼▼▼ LOGIKA 'hasMore' YANG BARU DAN LEBIH ANDAL ▼▼▼
-      // Simpan total hasil saat pencarian pertama
-      if (newSearch) {
-        setTotalResults(total);
-      }
-
-      console.log(`PAGINATION_DEBUG: Total Results Available: ${total}, Results Loaded: ${newOffset}, Should show 'Load More'?: ${newOffset < total}`);
-      // Tombol 'Load More' akan muncul jika hasil yang ditampilkan belum mencapai total
-      setHasMore(newOffset < total);
-      
-    } catch (err) {
-      setError(
-        'Failed to fetch assets. Please check backend connection or API key.',
-      );
-      console.error('API Call Error:', err);
-    } finally {
-      newSearch ? setIsLoading(false) : setIsLoadingMore(false);
-    }
-  };
-
-  const handleLoadMore = () => {
-    handleSearch(currentQuery, currentMediaType, false);
-  };
-
-  const handleOpenDetailModal = (asset) => { /* ... */ };
-  const handleCloseModal = () => { /* ... */ };
+// Komponen Sidebar/Navigasi Baru
+const Sidebar = () => {
+  const baseClasses = "flex items-center p-3 my-1 rounded-xl text-gray-300 font-semibold transition-colors";
+  const activeClasses = "bg-purple-600/20 text-purple-400 border-l-4 border-purple-500";
+  const hoverClasses = "hover:bg-gray-700/50";
 
   return (
-    // ... JSX tidak berubah sama sekali ...
-    <div className="container mx-auto p-4 md:p-8">
-      <header className="text-center mb-10">
-        <h1 className="text-4xl md:text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-600">
-          IP Asset Search
-        </h1>
-        <p className="text-gray-400 mt-2">
-          Discover intellectual property assets on Story Protocol.
-        </p>
-      </header>
-
-      <main>
-        <SearchBar onSearch={(query, mediaType) => handleSearch(query, mediaType, true)} />
-        <ResultsDisplay
-          isLoading={isLoading}
-          error={error}
-          results={results}
-          hasSearched={hasSearched}
-          onAssetClick={handleOpenDetailModal}
-        />
-        <div className="text-center mt-8">
-          {hasMore && !isLoading && (
-            <button
-              onClick={handleLoadMore}
-              disabled={isLoadingMore}
-              className="p-3 px-6 font-bold bg-purple-600 rounded-md hover:bg-purple-700 transition-colors disabled:bg-gray-500 disabled:cursor-not-allowed"
-            >
-              {isLoadingMore ? 'Loading...' : 'Load More'}
-            </button>
-          )}
-        </div>
-      </main>
-
-      {isModalOpen && selectedAsset && (
-        <AssetDetailModal asset={selectedAsset} onClose={handleCloseModal} />
-      )}
+    <div className="w-full lg:w-64 bg-gray-800 p-4 rounded-2xl shadow-xl sticky top-4 h-fit">
+      <h2 className="text-xl font-bold text-white mb-6 border-b border-gray-700 pb-3">IP Scope</h2>
+      <nav className="space-y-2">
+        <NavLink 
+          to="/" 
+          className={({ isActive }) => `${baseClasses} ${hoverClasses} ${isActive ? activeClasses : ''}`}
+        >
+          {/* Ikon Pencarian */}
+          <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+          Asset Search
+        </NavLink>
+        <NavLink 
+          to="/remix-tree" 
+          className={({ isActive }) => `${baseClasses} ${hoverClasses} ${isActive ? activeClasses : ''}`}
+        >
+          {/* Ikon Pohon Remix */}
+          <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+          Remix Tree View
+        </NavLink>
+      </nav>
     </div>
+  );
+};
+
+function App() {
+  return (
+    <BrowserRouter>
+      <div className="min-h-screen bg-gray-900 text-white p-4 md:p-8">
+        <header className="text-center mb-10">
+            <h1 className="text-4xl md:text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-600">
+                IP Asset Analyzer
+            </h1>
+            <p className="text-gray-400 mt-2">
+                Analytic dashboard built with Story Protocol API.
+            </p>
+        </header>
+        
+        <div className="flex flex-col lg:flex-row gap-8">
+          <Sidebar />
+          
+          <main className="flex-grow">
+            <Routes>
+              {/* Route untuk halaman utama (pencarian) */}
+              <Route path="/" element={<SearchPage />} />
+              {/* Route baru untuk halaman Remix Tree */}
+              <Route path="/remix-tree" element={<RemixTreePage />} />
+            </Routes>
+          </main>
+        </div>
+      </div>
+    </BrowserRouter>
   );
 }
 

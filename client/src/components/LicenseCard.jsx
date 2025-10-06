@@ -7,10 +7,9 @@ const StatPill = ({ label, value, colorClass }) => (
 );
 
 const LicenseCard = ({ asset }) => {
-  // Data sudah dinormalisasi di backend, termasuk pilTerms dan royaltyPolicy
   const { pilTerms, royaltyPolicy } = asset;
   
-  // ▼▼▼ PERBAIKAN KRITIS: Cek apakah properti kunci lisensi ada (bukan undefined), terlepas dari nilainya (true/false/0) ▼▼▼
+  // ▼▼▼ PERBAIKAN KRITIS BUG LISENSI: Cek apakah properti kunci lisensi ada (bukan undefined), terlepas dari nilainya (true/false/0) ▼▼▼
   const hasPilTerms = pilTerms && pilTerms.commercialUse !== undefined;
   // Cek apakah properti rate ada, bahkan jika rate-nya 0
   const hasRoyaltyPolicy = royaltyPolicy && royaltyPolicy.rate !== undefined;
@@ -18,7 +17,7 @@ const LicenseCard = ({ asset }) => {
 
   if (!hasPilTerms && !hasRoyaltyPolicy) {
     return (
-      <div className="bg-gray-800 p-4 rounded-xl text-gray-500 border border-gray-700/50">
+      <div className="bg-gray-800 p-4 rounded-lg text-gray-500 border border-gray-700/50">
         <h4 className="font-bold text-lg mb-2 text-white">License & Royalty Info</h4>
         <p>No specific PIL terms or royalty policy found for this asset.</p>
         <p className="text-xs mt-1">Default Story Protocol licensing applies.</p>
@@ -37,14 +36,14 @@ const LicenseCard = ({ asset }) => {
 
   return (
     <div className="bg-gray-800 p-5 rounded-lg shadow-inner border border-purple-700/50">
-      <h4 className="font-extrabold text-xl mb-4 text-transparent bg-clip-text bg-gradient-to-r from-green-400 to-cyan-500">
+      <h4 className="font-semibold text-lg mb-3 text-transparent bg-clip-text bg-gradient-to-r from-green-400 to-cyan-500">
         License Summary
       </h4>
       
       {/* Royalty Section */}
       {hasRoyaltyPolicy && (
-          <div className="mb-4 pb-3 border-b border-gray-700">
-              <p className="text-sm font-semibold text-gray-300 mb-2">Royalty Policy</p>
+          <div className="mb-3 pb-3 border-b border-gray-700">
+              <p className="text-sm font-light text-gray-300 mb-2">Royalty Policy</p>
               <div className="flex flex-wrap gap-2">
                   <StatPill label="Royalty Rate" value={royaltyRate} colorClass={royaltyPolicy.rate > 0 ? 'bg-cyan-900/50 text-cyan-300' : 'bg-gray-700 text-gray-400'} />
                   <StatPill label="Token" value={royaltyPolicy.payoutToken || 'ETH/Default'} colorClass="bg-gray-700 text-gray-400" />
@@ -55,23 +54,19 @@ const LicenseCard = ({ asset }) => {
       {/* PIL Terms Section */}
       {hasPilTerms && (
         <div>
-          <p className="text-sm font-semibold text-gray-300 mb-2">Public IP License (PIL) Terms</p>
+          <p className="text-sm font-light text-gray-300 mb-2">Public IP License (PIL) Terms</p>
           <div className="flex flex-wrap gap-2">
               <StatPill label="Usage" value={termName} colorClass={termColor} />
               <StatPill label="Transferable" value={pilTerms.transferable ? 'YES' : 'NO'} colorClass={transferColor} />
               <StatPill label="Derivatives" value={pilTerms.derivativesAllowed ? 'ALLOWED' : 'DENIED'} colorClass={derivativeColor} />
           </div>
           {pilTerms.uri && (
-              <p className="text-xs text-gray-500 mt-3 truncate">
+              <p className="text-xs text-gray-500 mt-3 truncate font-light">
                   URI: {pilTerms.uri}
               </p>
           )}
         </div>
       )}
-      
-      <p className="text-xs text-gray-600 mt-4 pt-3 border-t border-gray-800">
-        Note: This is a simplified summary of on-chain configuration.
-      </p>
     </div>
   );
 };

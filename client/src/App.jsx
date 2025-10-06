@@ -4,14 +4,13 @@ import SearchPage from './pages/SearchPage';
 import IPGraphPage from './pages/IPGraphPage'; 
 import MonitoringPage from './pages/MonitoringPage'; 
 
-// Komponen Sidebar/Navigasi
+// ▼▼▼ PERBAIKAN: KOMPONEN SIDEBAR DIPINDAHKAN DI LUAR FUNGSI APP ▼▼▼
 const Sidebar = () => {
   const baseClasses = "flex items-center p-3 my-1 rounded-lg text-gray-300 font-semibold transition-colors";
-  const activeClasses = "bg-purple-600/10 text-purple-400 border-l-4 border-purple-500"; // Softened active color
+  const activeClasses = "bg-purple-600/10 text-purple-400 border-l-4 border-purple-500"; 
   const hoverClasses = "hover:bg-gray-700/50";
 
   return (
-    // Mengubah rounded-2xl menjadi rounded-lg untuk tampilan lebih simpel/elegan
     <div className="w-full lg:w-64 bg-gray-800 p-4 rounded-lg shadow-xl sticky top-4 h-fit border border-gray-700">
       <h2 className="text-xl font-bold text-white mb-6 border-b border-gray-700 pb-3">IP Scope</h2>
       <nav className="space-y-1">
@@ -43,6 +42,7 @@ const Sidebar = () => {
     </div>
   );
 };
+
 
 function App() {
   return (

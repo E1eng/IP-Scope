@@ -6,10 +6,15 @@ const ASSETS_DETAIL_URL = `${BASE_URL}/assets`;
 const ASSETS_EDGES_URL = `${BASE_URL}/assets/edges`; 
 
 const apiKey = process.env.STORY_PROTOCOL_API_KEY;
-const apiHeaders = { 'X-API-Key': apiKey, 'Content-Type': 'application/json' };
+const apiHeaders = { 'X-Api-Key': apiKey, 'Content-Type': 'application/json' };
 
-// Batas Kedalaman Pohon untuk Rekursi
 const MAX_TREE_DEPTH = 3;
+
+const checkApiKey = () => {
+    if (!apiKey || apiKey === 'YOUR_STORY_PROTOCOL_API_KEY_HERE') {
+        throw new Error("API Key Missing: Please ensure STORY_PROTOCOL_API_KEY is correctly set in your server/.env file.");
+    }
+};
 
 /**
  * Utility function to normalize and clean up asset data.
@@ -20,6 +25,9 @@ const normalizeAssetData = (asset) => {
     const nftMetadata = asset.nftMetadata || {};
     const rawMetadata = nftMetadata.raw?.metadata || {};
     
+    // Ambil objek lisensi pertama dari array licenses
+    const firstLicense = asset.licenses && asset.licenses.length > 0 ? asset.licenses[0] : null;
+    
     // Normalisasi semua bidang penting
     return {
         ...asset,
@@ -28,12 +36,14 @@ const normalizeAssetData = (asset) => {
         description: asset.description || rawMetadata.description || 'No description available.',
         // Pastikan mediaType selalu uppercase
         mediaType: nftMetadata.mediaType ? nftMetadata.mediaType.toUpperCase() : 'UNKNOWN',
-        // ▼▼▼ FIX 400 BAD REQUEST: Prioritaskan URL gambar mentah (.url) daripada thumbnail URL yang ter-transformasi ▼▼▼
+        // FIX Gambar 400: Prioritaskan URL gambar mentah (.url)
         mediaUrl: nftMetadata.image?.url || nftMetadata.image?.thumbnailUrl || null, 
         parentsCount: asset.parentsCount !== undefined ? asset.parentsCount : (asset.parents?.length || 0),
-        // Lisensi dan Royalty
-        royaltyPolicy: asset.royaltyPolicy || null,
-        pilTerms: asset.pilTerms || null,
+        
+        // FIX LISENSI: Ekstrak data terms dan royalty dari array licenses[0]
+        pilTerms: firstLicense ? firstLicense.terms : null, 
+        royaltyPolicy: firstLicense ? firstLicense.licensingConfig : null,
+        
         // Pastikan createdAt selalu ada untuk sorting
         createdAt: asset.createdAt || null, 
         score: asset.score || 0,
@@ -46,16 +56,18 @@ const normalizeAssetData = (asset) => {
  * Mendapatkan satu aset IP berdasarkan ID dan memperkaya datanya.
  */
 const getIpAsset = async (ipId) => {
-    if (!apiKey) throw new Error('Story Protocol API Key is not configured in .env file');
+    checkApiKey();
     const idToFetch = ipId.trim();
 
     try {
-        const detailsBody = { where: { ipIds: [idToFetch] } };
+        const detailsBody = { 
+            where: { ipIds: [idToFetch] },
+            includeLicenses: true // FIX LISENSI: Meminta detail lisensi
+        };
         const detailsResponse = await axios.post(ASSETS_DETAIL_URL, detailsBody, { headers: apiHeaders });
         const asset = detailsResponse.data.data?.[0];
         
         if (!asset) {
-            // Ini akan tertangkap di catch block controller, tapi kita bisa throw yang lebih spesifik
             throw new Error(`Asset with ID ${idToFetch} not found`);
         }
         
@@ -70,7 +82,6 @@ const getIpAsset = async (ipId) => {
 
 /**
  * Mencari aset IP dan memperkaya data dengan URL media.
- * Menerapkan try/catch per langkah untuk stabilitas.
  */
 const searchIpAssets = async (query, mediaType, limit = 20, offset = 0) => {
     if (!apiKey) throw new Error('Story Protocol API Key is not configured in .env file');
@@ -110,7 +121,10 @@ const searchIpAssets = async (query, mediaType, limit = 20, offset = 0) => {
     // --- LANGKAH 2: FETCH DETAILS (Enrichment) ---
     try {
         const ipIdsToFetch = searchResults.map(asset => asset.ipId);
-        const detailsBody = { where: { ipIds: ipIdsToFetch } };
+        const detailsBody = { 
+            where: { ipIds: ipIdsToFetch },
+            includeLicenses: true // FIX LISENSI: Meminta detail lisensi
+        };
         detailsResponse = await axios.post(ASSETS_DETAIL_URL, detailsBody, { headers: apiHeaders });
 
         const detailedAssets = detailsResponse.data.data || [];
@@ -131,9 +145,8 @@ const searchIpAssets = async (query, mediaType, limit = 20, offset = 0) => {
         const errorMessage = error.response ? `Status: ${error.response.status} - Data: ${JSON.stringify(error.response.data)}` : error.message;
         console.error(`AXIOS ERROR (Details Step 2): ${errorMessage}`);
         // Jika langkah detail gagal, kita kembalikan hasil search mentah (dinormalisasi seadanya)
-        const partialAssets = searchResults.map(asset => normalizeAssetData(asset));
-        // Throw error yang lebih spesifik jika kegagalan terjadi di langkah kedua
         console.warn('Returning partial search results due to details API failure.');
+        const partialAssets = searchResults.map(asset => normalizeAssetData(asset));
         return {
             data: partialAssets,
             pagination: searchResponse.data.pagination
@@ -141,9 +154,6 @@ const searchIpAssets = async (query, mediaType, limit = 20, offset = 0) => {
     }
 };
 
-/**
- * Fungsi rekursif untuk mengambil turunan (derivatives) dari suatu IP Asset.
- */
 const fetchDerivativesRecursively = async (ipId, currentDepth) => {
     // Ambil detail aset saat ini
     const currentAsset = await getIpAsset(ipId).catch(e => ({ 
@@ -240,9 +250,33 @@ const getInfringementScore = async (ipId) => {
     };
 };
 
+const getOnChainAnalytics = async (ipId) => {
+    // Simulasi penundaan jaringan/pemrosesan
+    await new Promise(resolve => setTimeout(resolve, 300)); 
+    
+    // Simulasi data analytics berdasarkan IP ID hash (untuk konsistensi)
+    const hashValue = ipId.charCodeAt(ipId.length - 2) + ipId.charCodeAt(ipId.length - 1);
+    
+    let disputeStatus = "None";
+    if (hashValue % 10 === 0) disputeStatus = "Active Dispute (Claim #123)";
+    if (hashValue % 7 === 0) disputeStatus = "Closed - No Violation";
+
+    const royaltySplit = ((hashValue % 20) + 1).toFixed(2); // Split 1% to 20%
+    const claimed = (hashValue * 10).toLocaleString(); // Total claimed
+
+    return {
+        licenseTermsId: "0xT" + ipId.substring(2, 10), // Simulated Term ID
+        royaltySplit: `${royaltySplit}%`,
+        disputeStatus: disputeStatus,
+        totalRoyaltiesClaimed: `${claimed} ETH`,
+    };
+};
+
+
 module.exports = {
   searchIpAssets,
   buildRemixTree,
   getIpAsset,
   getInfringementScore,
+  getOnChainAnalytics, // ▼▼▼ FIX: PASTIKAN FUNGSI INI DIEKSPOR ▼▼▼
 };

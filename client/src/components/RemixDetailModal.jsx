@@ -1,8 +1,8 @@
 import React from 'react';
 import LicenseCard from './LicenseCard';
-import DetailRow from './DetailRow'; // Import komponen baru
+import DetailRow from './DetailRow';
 
-const RemixDetailModal = ({ asset, onClose }) => {
+const RemixDetailModal = ({ asset, onClose, analytics, interactionType }) => {
   // Penanganan error jika detail gagal dimuat
   if (!asset || asset.isError) {
       const title = asset?.title || 'Error Loading Details';
@@ -25,55 +25,69 @@ const RemixDetailModal = ({ asset, onClose }) => {
 
   const creatorName = asset.nftMetadata?.raw?.metadata?.creators?.[0]?.name || 'Unknown Creator';
 
+  const modalTitle = interactionType === 'link' ? `Link/License Details (${asset.ipId.substring(0, 8)})` : asset.title;
+
   return (
     <div 
       className={`fixed inset-0 bg-black bg-opacity-75 flex justify-center items-center z-50 p-4 transition-opacity duration-300`}
       onClick={onClose}
     >
       <div 
-        className="bg-gray-900 border border-purple-600 rounded-lg w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden transition-all duration-300"
+        // Desain Modal Minimalis
+        className="bg-gray-900 border border-purple-600 rounded-lg w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden transition-all duration-300 shadow-2xl"
         onClick={e => e.stopPropagation()}
       >
-        <div className="p-6 overflow-y-auto">
+        <div className="p-5 overflow-y-auto">
           <div className="flex justify-between items-start mb-4 border-b border-gray-700 pb-3">
-              <h2 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-500">{asset.title || 'Untitled Asset'}</h2>
+              <h2 className="text-2xl font-semibold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-500 line-clamp-2">{modalTitle}</h2>
               <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors p-1">
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
           </div>
 
-          {/* Image Preview */}
-          <div className="w-full h-48 bg-gray-800 rounded-xl mb-4 overflow-hidden flex items-center justify-center">
+          {/* Image Preview (Kecil) */}
+          <div className="w-full h-32 bg-gray-800 rounded-lg mb-4 overflow-hidden flex items-center justify-center border border-gray-700">
               {asset.mediaUrl ? (
                   <img src={asset.mediaUrl} alt={asset.title} className="max-w-full max-h-full object-contain p-2" />
               ) : (
-                  <div className="p-8 text-gray-500">No Image Preview</div>
+                  <div className="p-8 text-gray-500 text-sm">No Image Preview</div>
               )}
           </div>
           
           {/* License Card */}
-          <div className='mb-6'>
+          <div className='mb-4'>
                 <LicenseCard asset={asset} />
           </div>
 
-          <p className="text-gray-300 text-sm mb-6 line-clamp-3">{asset.description || 'No description available for this asset.'}</p>
+          {/* DYNAMIC TOOLTIPS SECTION (On-Chain Analytics) */}
+          {analytics && (
+              <div className="bg-gray-700/50 p-4 rounded-lg mb-4 border border-gray-600 shadow-inner">
+                  <h3 className='text-md font-semibold text-white mb-2'>On-Chain Analytics</h3>
+                  <DetailRow label="License Terms ID" value={analytics.licenseTermsId} />
+                  <DetailRow label="Royalty Split" value={analytics.royaltySplit} />
+                  <DetailRow label="Total Royalties Claimed" value={analytics.totalRoyaltiesClaimed} />
+                  <DetailRow label="Dispute Status" value={analytics.disputeStatus} />
+              </div>
+          )}
+          {/* Deskripsi */}
+          <p className="text-gray-400 text-xs mb-4">{asset.description || 'No description available.'}</p>
 
-          <div className="space-y-2">
+
+          {/* Detail List (Kecil) */}
+          <div className="space-y-1 border-t border-gray-700 pt-3 text-sm">
               <DetailRow label="IP ID" value={asset.ipId} />
               <DetailRow label="Media Type" value={asset.mediaType} />
               <DetailRow label="Creator" value={creatorName} />
-              <DetailRow label="Parents Count" value={asset.parentsCount} />
               <DetailRow label="Date Created" value={formattedDate} />
-              <DetailRow label="Contract Address" value={asset.nftMetadata?.contract_address} />
           </div>
           
           <a 
               href={`https://explorer.storyprotocol.xyz/ip-assets/${asset.ipId}`} 
               target="_blank" 
               rel="noopener noreferrer"
-              className="mt-6 w-full inline-flex items-center justify-center p-3 font-bold bg-purple-600 rounded-xl hover:bg-purple-700 transition-colors text-white"
+              className="mt-6 w-full inline-flex items-center justify-center p-3 font-bold bg-purple-600 rounded-md hover:bg-purple-700 transition-colors text-white"
           >
-              View on Story Explorer
+              View on Explorer
           </a>
         </div>
       </div>

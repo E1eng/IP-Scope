@@ -48,7 +48,22 @@ const getAssetDetail = async (req, res) => {
     }
 };
 
-// ▼▼▼ DEFINISI FUNGSI BARU: getMonitoringAgents (Simulasi) ▼▼▼
+// ▼▼▼ DEFINISI CONTROLLER ANALITIK BARU ▼▼▼
+const getOnChainAnalyticsController = async (req, res) => {
+    const { id } = req.params;
+    if (!id) {
+        return res.status(400).json({ message: 'Asset ID is required' });
+    }
+    try {
+        // Panggil fungsi yang benar dari service
+        const analytics = await storyProtocolService.getOnChainAnalytics(id);
+        res.status(200).json(analytics);
+    } catch (error) {
+        console.error('Error in analytics controller:', error.message);
+        res.status(500).json({ message: `Failed to fetch analytics: ${error.message}` });
+    }
+};
+
 const getMonitoringAgents = async (req, res) => {
     // Data simulasi untuk fitur Monitoring Agents
     const monitoredAssets = [
@@ -63,5 +78,6 @@ module.exports = {
   searchAssets,
   getAssetRemixTree,
   getAssetDetail, 
-  getMonitoringAgents, // ▼▼▼ PASTIKAN DIEKSPOR ▼▼▼
+  getMonitoringAgents,
+  getOnChainAnalyticsController, // ▼▼▼ EXPORT FUNGSI ANALITIK BARU ▼▼▼
 };

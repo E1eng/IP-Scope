@@ -1,23 +1,21 @@
 import React, { useRef, useEffect } from 'react';
 import * as d3 from 'd3';
 
-const IPGraphVisualization = ({ data, onNodeClick, rootId }) => {
+// Terima handler onLinkClick
+const IPGraphVisualization = ({ data, onNodeClick, onLinkClick, rootId }) => {
     const svgRef = useRef(null);
     const containerRef = useRef(null);
 
-    // Default dimensions, akan diganti di useEffect
+    // Dapatkan dimensi kontainer secara dinamis
     const width = containerRef.current ? containerRef.current.clientWidth : 800;
     const height = containerRef.current ? containerRef.current.clientHeight : 500;
 
     useEffect(() => {
-        // Hapus SVG lama sebelum render ulang
         d3.select(svgRef.current).selectAll("*").remove();
 
         if (!containerRef.current || !data || data.nodes.length === 0) return;
 
         const container = containerRef.current;
-        
-        // Dapatkan dimensi kontainer yang akurat
         const width = container.clientWidth;
         const height = container.clientHeight;
         
@@ -26,13 +24,11 @@ const IPGraphVisualization = ({ data, onNodeClick, rootId }) => {
         const nodes = data.nodes.map(d => ({ ...d }));
         const links = data.links.map(d => ({ ...d }));
 
-        // Inisialisasi SVG
         const svg = d3.select(svgRef.current)
             .attr("width", width)
             .attr("height", height)
             .attr("viewBox", [0, 0, width, height]);
 
-        // Grup utama untuk panning dan zooming
         const g = svg.append("g");
 
         // Skala Warna Kustom
@@ -53,7 +49,7 @@ const IPGraphVisualization = ({ data, onNodeClick, rootId }) => {
             .join("marker")
             .attr("id", "arrow")
             .attr("viewBox", "0 -5 10 10")
-            .attr("refX", 20) // Tarik panah sedikit dari tengah node
+            .attr("refX", 20) 
             .attr("refY", 0)
             .attr("markerWidth", 6)
             .attr("markerHeight", 6)
@@ -64,8 +60,8 @@ const IPGraphVisualization = ({ data, onNodeClick, rootId }) => {
 
         // Inisialisasi Force Simulation
         const simulation = d3.forceSimulation(nodes)
-            .force("link", d3.forceLink(links).id(d => d.id).distance(150)) // Jarak lebih jauh
-            .force("charge", d3.forceManyBody().strength(-600)) // Tolakan lebih kuat
+            .force("link", d3.forceLink(links).id(d => d.id).distance(150)) 
+            .force("charge", d3.forceManyBody().strength(-600)) 
             .force("center", d3.forceCenter(width / 2, height / 2));
 
         // Buat Links
@@ -76,7 +72,11 @@ const IPGraphVisualization = ({ data, onNodeClick, rootId }) => {
           .data(links)
           .join("line")
             .attr("stroke-width", 2)
-            .attr("marker-end", "url(#arrow)"); // Terapkan panah
+            .attr("marker-end", "url(#arrow)")
+            .attr("class", "link")
+            // ▼▼▼ Tambahkan Link Click Handler ▼▼▼
+            .on("click", (event, d) => onLinkClick(d.target.id)) 
+            .attr("cursor", "pointer");
 
         // Grup Node (lingkaran dan teks)
         const nodeGroup = g.append("g")
@@ -107,7 +107,7 @@ const IPGraphVisualization = ({ data, onNodeClick, rootId }) => {
 
         // Lingkaran Node
         nodeGroup.append("circle")
-            .attr("r", d => d.id === rootId ? 14 : 10) // Node Root lebih besar
+            .attr("r", d => d.id === rootId ? 14 : 10) 
             .attr("fill", getNodeColor)
             .attr("stroke", "#eee")
             .attr("stroke-width", 2);
@@ -132,7 +132,7 @@ const IPGraphVisualization = ({ data, onNodeClick, rootId }) => {
                 .attr("transform", d => `translate(${d.x}, ${d.y})`);
         });
 
-        // Penanganan Drag
+        // ... (Penanganan Drag dan Zoom tetap sama)
         function drag(simulation) {
             function dragstarted(event) {
                 if (!event.active) simulation.alphaTarget(0.3).restart();
@@ -154,7 +154,6 @@ const IPGraphVisualization = ({ data, onNodeClick, rootId }) => {
                 .on("end", dragended);
         }
 
-        // Penanganan Zoom dan Pan
         function handleZoom(event) {
             g.attr("transform", event.transform);
         }
@@ -165,7 +164,7 @@ const IPGraphVisualization = ({ data, onNodeClick, rootId }) => {
 
         svg.call(zoom);
 
-    }, [data, onNodeClick, rootId]); 
+    }, [data, onNodeClick, onLinkClick, rootId]); // Tambahkan onLinkClick ke dependency array
 
     return (
         <div ref={containerRef} className="w-full h-full relative" style={{ minHeight: '70vh' }}>

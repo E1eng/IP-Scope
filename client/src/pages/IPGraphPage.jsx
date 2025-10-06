@@ -13,6 +13,11 @@ function IPGraphPage() {
   
   const [selectedChildAsset, setSelectedChildAsset] = useState(null);
   const [isChildLoading, setIsChildLoading] = useState(false);
+  // ▼▼▼ STATE BARU UNTUK DATA ANALITIK ON-CHAIN ▼▼▼
+  const [analyticsData, setAnalyticsData] = useState(null); 
+  const [selectedType, setSelectedType] = useState('node'); // 'node' atau 'link'
+
+  // ... (handleFetchGraph dan transformTreeToGraph tetap sama)
 
   const handleFetchGraph = async (e) => {
     e.preventDefault();
@@ -22,14 +27,13 @@ function IPGraphPage() {
     setGraphData(null);
     setError(null);
     setSelectedChildAsset(null);
+    setAnalyticsData(null); // Reset analytics
 
     try {
-      // Menggunakan endpoint remix-tree yang sudah diubah di backend
       const response = await axios.get(
         `${API_BASE_URL}/assets/${assetId.trim()}/remix-tree`
       );
       
-      // Data yang dikembalikan adalah format Tree. Kita perlu mengubahnya menjadi format Graph (Nodes/Links).
       const { nodes, links } = transformTreeToGraph(response.data);
       setGraphData({ nodes, links });
 
@@ -43,26 +47,44 @@ function IPGraphPage() {
     }
   };
 
-  const handleNodeClick = async (ipId) => {
-      setIsChildLoading(true);
+
+  const handleGraphInteraction = async (id, type) => {
       setSelectedChildAsset(null);
+      setAnalyticsData(null);
+      setIsChildLoading(true);
+      setSelectedType(type);
 
       try {
-          // Memanggil endpoint detail aset tunggal
-          const response = await axios.get(`${API_BASE_URL}/assets/${ipId}`);
-          setSelectedChildAsset(response.data);
+          // 1. Ambil detail aset (umum)
+          const assetResponse = await axios.get(`${API_BASE_URL}/assets/${id}`);
+          const assetDetails = assetResponse.data;
+          
+          // 2. Ambil data on-chain (analitik)
+          const analyticsResponse = await axios.get(`${API_BASE_URL}/assets/${id}/analytics`);
+          
+          // Gabungkan data
+          setSelectedChildAsset(assetDetails);
+          setAnalyticsData(analyticsResponse.data);
+          
       } catch (err) {
-          console.error("Failed to fetch asset detail:", err.response ? err.response.data : err.message);
+          console.error(`Failed to fetch ${type} details:`, err.response ? err.response.data : err.message);
           setSelectedChildAsset({ 
-            ipId, 
-            title: "Error Loading Details", 
-            description: "Failed to load full asset details from the server.", 
+            ipId: id, 
+            title: `Error fetching ${type} details`, 
+            description: "Failed to load full data for this component.", 
             isError: true 
           });
       } finally {
           setIsChildLoading(false);
       }
   };
+
+
+  // Gabungkan handler node dan link menjadi satu
+  const handleNodeClick = (ipId) => handleGraphInteraction(ipId, 'node');
+  const handleLinkClick = (ipId) => handleGraphInteraction(ipId, 'link'); // Link menggunakan ID target (anak)
+
+  // ... (transformTreeToGraph tetap sama)
 
   // Fungsi utilitas untuk mengubah format Tree (nested object) menjadi format Graph (flat arrays of nodes and links)
   const transformTreeToGraph = (root) => {
@@ -71,6 +93,7 @@ function IPGraphPage() {
     const nodeMap = new Map();
 
     const traverse = (node, parentId = null) => {
+      // Mencegah duplikasi node
       if (nodeMap.has(node.ipId)) return;
 
       const d3Node = {
@@ -134,6 +157,7 @@ function IPGraphPage() {
               <IPGraphVisualization 
                 data={graphData} 
                 onNodeClick={handleNodeClick} 
+                onLinkClick={handleLinkClick} // Kirim handler untuk link
                 rootId={assetId.trim()}
               />
           )}
@@ -148,7 +172,9 @@ function IPGraphPage() {
       {selectedChildAsset && !isChildLoading && (
         <RemixDetailModal
           asset={selectedChildAsset}
-          onClose={() => setSelectedChildAsset(null)}
+          onClose={() => { setSelectedChildAsset(null); setAnalyticsData(null); }}
+          analytics={analyticsData} // Kirim data analitik baru
+          interactionType={selectedType}
         />
       )}
        {isChildLoading && (

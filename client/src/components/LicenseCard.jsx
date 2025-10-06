@@ -10,7 +10,13 @@ const LicenseCard = ({ asset }) => {
   // Data sudah dinormalisasi di backend, termasuk pilTerms dan royaltyPolicy
   const { pilTerms, royaltyPolicy } = asset;
   
-  if (!pilTerms && !royaltyPolicy) {
+  // ▼▼▼ PERBAIKAN KRITIS: Cek apakah properti kunci lisensi ada (bukan undefined), terlepas dari nilainya (true/false/0) ▼▼▼
+  const hasPilTerms = pilTerms && pilTerms.commercialUse !== undefined;
+  // Cek apakah properti rate ada, bahkan jika rate-nya 0
+  const hasRoyaltyPolicy = royaltyPolicy && royaltyPolicy.rate !== undefined;
+
+
+  if (!hasPilTerms && !hasRoyaltyPolicy) {
     return (
       <div className="bg-gray-800 p-4 rounded-xl text-gray-500 border border-gray-700/50">
         <h4 className="font-bold text-lg mb-2 text-white">License & Royalty Info</h4>
@@ -21,31 +27,33 @@ const LicenseCard = ({ asset }) => {
   }
 
   // PIL Terms (Public IP License) Analysis
-  const termName = pilTerms?.commercialUse ? 'Commercial' : 'Non-Commercial';
-  const termColor = pilTerms?.commercialUse ? 'bg-green-900/50 text-green-300' : 'bg-yellow-900/50 text-yellow-300';
-  const transferColor = pilTerms?.transferable ? 'bg-blue-900/50 text-blue-300' : 'bg-red-900/50 text-red-300';
-  const derivativeColor = pilTerms?.derivativesAllowed ? 'bg-purple-900/50 text-purple-300' : 'bg-red-900/50 text-red-300';
+  const termName = hasPilTerms && pilTerms.commercialUse ? 'Commercial' : 'Non-Commercial';
+  const termColor = hasPilTerms && pilTerms.commercialUse ? 'bg-green-900/50 text-green-300' : 'bg-yellow-900/50 text-yellow-300';
+  const transferColor = hasPilTerms && pilTerms.transferable ? 'bg-blue-900/50 text-blue-300' : 'bg-red-900/50 text-red-300';
+  const derivativeColor = hasPilTerms && pilTerms.derivativesAllowed ? 'bg-purple-900/50 text-purple-300' : 'bg-red-900/50 text-red-300';
 
   // Royalty Policy Analysis: Konversi 10000 menjadi 100%
-  const royaltyRate = royaltyPolicy?.rate ? `${(royaltyPolicy.rate / 10000).toFixed(2)}%` : 'N/A';
+  const royaltyRate = hasRoyaltyPolicy && royaltyPolicy.rate ? `${(royaltyPolicy.rate / 10000).toFixed(2)}%` : '0.00%';
 
   return (
-    <div className="bg-gray-800 p-5 rounded-2xl shadow-inner border border-purple-700/50">
+    <div className="bg-gray-800 p-5 rounded-lg shadow-inner border border-purple-700/50">
       <h4 className="font-extrabold text-xl mb-4 text-transparent bg-clip-text bg-gradient-to-r from-green-400 to-cyan-500">
         License Summary
       </h4>
       
       {/* Royalty Section */}
-      <div className="mb-4 pb-3 border-b border-gray-700">
-          <p className="text-sm font-semibold text-gray-300 mb-2">Royalty Policy</p>
-          <div className="flex flex-wrap gap-2">
-              <StatPill label="Royalty Rate" value={royaltyRate} colorClass={royaltyPolicy?.rate ? 'bg-cyan-900/50 text-cyan-300' : 'bg-gray-700 text-gray-400'} />
-              <StatPill label="Token" value={royaltyPolicy?.payoutToken || 'ETH/Default'} colorClass="bg-gray-700 text-gray-400" />
+      {hasRoyaltyPolicy && (
+          <div className="mb-4 pb-3 border-b border-gray-700">
+              <p className="text-sm font-semibold text-gray-300 mb-2">Royalty Policy</p>
+              <div className="flex flex-wrap gap-2">
+                  <StatPill label="Royalty Rate" value={royaltyRate} colorClass={royaltyPolicy.rate > 0 ? 'bg-cyan-900/50 text-cyan-300' : 'bg-gray-700 text-gray-400'} />
+                  <StatPill label="Token" value={royaltyPolicy.payoutToken || 'ETH/Default'} colorClass="bg-gray-700 text-gray-400" />
+              </div>
           </div>
-      </div>
+      )}
 
       {/* PIL Terms Section */}
-      {pilTerms && (
+      {hasPilTerms && (
         <div>
           <p className="text-sm font-semibold text-gray-300 mb-2">Public IP License (PIL) Terms</p>
           <div className="flex flex-wrap gap-2">

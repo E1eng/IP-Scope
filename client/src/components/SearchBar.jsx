@@ -28,29 +28,34 @@ const SearchBar = ({ onSearch }) => {
     if (!query.trim()) return;
 
     setIsLoading(true);
-    // Kirim query, mediaType, DAN sortBy ke handler
     await onSearch(query, mediaType, sortBy); 
     setIsLoading(false);
   };
 
+  // Kelas untuk desain elegan/minimalis
+  const inputClasses = "flex-grow p-3 bg-gray-800 border border-gray-700 rounded-md focus:ring-2 focus:ring-purple-400 font-light";
+  const selectClasses = "w-full sm:w-1/2 p-3 bg-gray-800 border border-gray-700 rounded-md focus:ring-2 focus:ring-pink-400 appearance-none cursor-pointer font-light";
+  const buttonClasses = "p-3 px-6 font-semibold text-white bg-purple-600 rounded-md hover:bg-purple-700 transition-colors disabled:bg-gray-700 disabled:cursor-not-allowed shadow-md";
+
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-4 mb-12">
+    // Kontainer pencarian lebih simpel
+    <form onSubmit={handleSubmit} className="flex flex-col gap-4 mb-8 p-4 bg-gray-800/80 rounded-lg border border-gray-700 shadow-md">
       {/* Input dan Button (Baris 1) */}
       <div className="flex flex-col sm:flex-row gap-4">
         <input
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Cari aset IP (misalnya: 'Ape', 'Manga', 'Song')"
-          className="flex-grow p-4 bg-gray-800 border-2 border-gray-700 rounded-xl focus:outline-none focus:ring-4 focus:ring-purple-600/50 focus:border-purple-500 transition-all text-white"
+          placeholder="Search IP assets..."
+          className={inputClasses}
           required
         />
         <button
           type="submit"
           disabled={isLoading || !query.trim()}
-          className="p-4 px-8 font-extrabold text-white bg-purple-600 rounded-xl shadow-lg hover:bg-purple-700 transition-colors disabled:bg-gray-700 disabled:cursor-not-allowed"
+          className={buttonClasses}
         >
-          {isLoading ? 'Mencari...' : 'Cari Aset'}
+          {isLoading ? 'Searching...' : 'Search Assets'}
         </button>
       </div>
 
@@ -60,7 +65,7 @@ const SearchBar = ({ onSearch }) => {
         <select
           value={mediaType}
           onChange={(e) => setMediaType(e.target.value)}
-          className="w-full sm:w-1/2 p-4 bg-gray-800 border-2 border-gray-700 rounded-xl focus:outline-none focus:ring-4 focus:ring-pink-600/50 focus:border-pink-500 transition-all appearance-none cursor-pointer"
+          className={selectClasses}
         >
           {MEDIA_TYPES.map(type => (
             <option key={type.value} value={type.value}>{`Filter: ${type.display}`}</option>
@@ -71,7 +76,7 @@ const SearchBar = ({ onSearch }) => {
         <select
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value)}
-            className="w-full sm:w-1/2 p-4 bg-gray-800 border-2 border-gray-700 rounded-xl focus:outline-none focus:ring-4 focus:ring-pink-600/50 focus:border-pink-500 transition-all appearance-none cursor-pointer"
+            className={selectClasses}
         >
             {SORT_OPTIONS.map(option => (
                 <option key={option.value} value={option.value}>{`Sort: ${option.display}`}</option>

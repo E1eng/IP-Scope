@@ -28,7 +28,8 @@ const normalizeAssetData = (asset) => {
         description: asset.description || rawMetadata.description || 'No description available.',
         // Pastikan mediaType selalu uppercase
         mediaType: nftMetadata.mediaType ? nftMetadata.mediaType.toUpperCase() : 'UNKNOWN',
-        mediaUrl: nftMetadata.image?.thumbnailUrl || null,
+        // ▼▼▼ FIX 400 BAD REQUEST: Prioritaskan URL gambar mentah (.url) daripada thumbnail URL yang ter-transformasi ▼▼▼
+        mediaUrl: nftMetadata.image?.url || nftMetadata.image?.thumbnailUrl || null, 
         parentsCount: asset.parentsCount !== undefined ? asset.parentsCount : (asset.parents?.length || 0),
         // Lisensi dan Royalty
         royaltyPolicy: asset.royaltyPolicy || null,

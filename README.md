@@ -1,92 +1,143 @@
-# IP Asset Search Engine (with Story Protocol API)
+IP Asset Analyzer (IP Scope)
+The IP Asset Analyzer (IP Scope) is a sophisticated full-stack web application designed to search, analyze, and visualize Intellectual Property (IP) assets registered on the Story Protocol blockchain. It transforms raw API data into an interactive, minimalist dashboard, making complex licensing and derivative relationships easy to understand.
 
-Proyek ini adalah sebuah aplikasi web full-stack untuk mencari Aset IP (Intellectual Property) menggunakan API dari Story Protocol. Aplikasi ini dibangun dengan arsitektur yang scalable dan maintainable, memisahkan backend (Node.js/Express) dan frontend (React/Vite).
+✨ Core Features
+IP Graph Visualization (D3.js): Generates a live, force-directed graph showing the entire provenance (parent-child relationships) of any input IP Asset ID. Nodes (IPAs) and edges (Licenses) are fully interactive.
 
-## Fitur
+Dynamic Tooltips: Clicking any node instantly fetches on-chain metrics (e.g., Royalty Splits, Dispute Status) for deep analysis.
 
--   Pencarian aset IP berdasarkan query teks.
--   Filter hasil pencarian berdasarkan tipe media (IMAGE, VIDEO, AUDIO, dll.).
--   Antarmuka yang bersih, modern, dan responsif.
--   Arsitektur aman dengan menyembunyikan API Key di backend.
--   Struktur proyek yang mudah dikembangkan lebih lanjut.
+Minimalist & Responsive Design: Uses Tailwind CSS for a clean, elegant, and highly efficient dashboard interface on all devices.
 
-## Arsitektur
+Search & Filtering: Powerful search functionality with sorting options (Score, Date Created) and media type filters.
 
--   **Backend**: Node.js dengan Express.js, bertindak sebagai perantara yang aman untuk berkomunikasi dengan Story Protocol API.
--   **Frontend**: React (dibangun dengan Vite) untuk antarmuka pengguna yang dinamis.
--   **Styling**: Tailwind CSS untuk styling yang cepat dan konsisten.
+License Clarity: Accurately displays Public IP License (PIL) Terms and Royalty Policy details for analyzed assets.
 
-## Prasyarat
+Enforcement Simulation: Includes a simulated workflow for initiating enforcement actions and predictive monitoring agents.
 
--   Node.js (v18 atau lebih baru)
--   npm / yarn / pnpm
--   API Key dari Story Protocol
+📂 Project Structure
+The application follows a clean Node.js/React monorepo structure, prioritizing separation of concerns.
 
-## Instalasi & Konfigurasi
+IP-Scope/
+├── client/                      # Frontend (React/Vite)
+│   ├── src/
+│   │   ├── components/          # Reusable UI components (D3 visualization, Cards, Modals)
+│   │   │   ├── AssetCard.jsx
+│   │   │   ├── AssetDetailPanel.jsx # Main detail view (Right sidebar)
+│   │   │   ├── IPGraphVisualization.jsx # D3.js core rendering
+│   │   │   ├── LicenseCard.jsx  # Component to display PIL terms clearly
+│   │   │   └── SearchBar.jsx
+│   │   ├── pages/               # Main application views
+│   │   │   ├── SearchPage.jsx   # Search and List view
+│   │   │   ├── IPGraphPage.jsx  # Graph visualization entry point
+│   │   │   └── MonitoringPage.jsx # Simulated agent list
+│   │   └── App.jsx              # Main React Router setup (Sidebar/Routes)
+│   ├── .env.example
+│   └── package.json
+└── server/                      # Backend (Node.js/Express)
+    ├── src/
+    │   ├── controllers/         # Handles routing logic and exposes API data
+    │   │   └── asset.controller.js 
+    │   ├── routes/
+    │   │   └── index.js         # Defines all API endpoints (/api/search, /api/assets/...)
+    │   └── services/
+    │       └── storyProtocol.service.js # Core business logic, API calls, data normalization, and recursive value flow calculation
+    ├── .env.example
+    └── package.json
 
-Proyek ini terdiri dari dua bagian: `server` dan `client`. Keduanya perlu di-setup secara terpisah.
+🗺️ API Endpoints Summary
+The backend exposes the following robust API routes (all prefixed with /api):
 
-### 1. Setup Backend (`server`)
+Method
 
-1.  **Masuk ke direktori server:**
-    ```bash
-    cd server
-    ```
+Endpoint
 
-2.  **Install dependencies:**
-    ```bash
-    npm install
-    ```
+Description
 
-3.  **Konfigurasi Environment Variable:**
-    Buat file baru bernama `.env` di dalam direktori `server/` dengan menyalin dari `.env.example`.
-    ```bash
-    cp .env.example .env
-    ```
-    Buka file `.env` dan ganti `YOUR_STORY_PROTOCOL_API_KEY_HERE` dengan API Key Anda yang valid.
-    ```
-    PORT=3001
-    STORY_PROTOCOL_API_KEY="ganti-dengan-api-key-asli-anda"
-    ```
+GET
 
-### 2. Setup Frontend (`client`)
+/api/search
 
-1.  **Masuk ke direktori client:**
-    ```bash
-    cd client
-    ```
+Performs text and media type search with client-side sorting.
 
-2.  **Install dependencies:**
-    ```bash
-    npm install
-    ```
+GET
 
-3.  **Konfigurasi Environment Variable:**
-    Buat file `.env` di direktori `client/` dengan menyalin dari `.env.example`.
-    ```bash
-    cp .env.example .env
-    ```
-    Isi file `.env` akan menunjuk ke URL backend Anda. Konfigurasi default sudah benar jika Anda menjalankan backend di port 3001.
-    ```
-    VITE_API_BASE_URL="http://localhost:3001/api"
-    ```
+/api/assets/:id
 
-## Menjalankan Proyek
+Fetches full normalized detail (including licenses) for a single IP Asset.
 
-Anda perlu menjalankan backend dan frontend secara bersamaan di dua terminal terpisah.
+GET
 
-1.  **Jalankan Backend Server:**
-    Buka terminal, masuk ke direktori `server/`, dan jalankan:
-    ```bash
-    npm run dev
-    ```
-    Server akan berjalan di `http://localhost:3001`.
+/api/assets/:id/remix-tree
 
-2.  **Jalankan Frontend App:**
-    Buka terminal **baru**, masuk ke direktori `client/`, dan jalankan:
-    ```bash
-    npm run dev
-    ```
-    Aplikasi React akan berjalan dan bisa diakses di `http://localhost:5173` (atau port lain yang ditampilkan di terminal).
+Fetches multi-level, recursive derivative and parent data for graph visualization, including calculated value flow percentage per node.
 
-Sekarang, buka browser Anda dan kunjungi alamat yang diberikan untuk aplikasi frontend, dan Anda siap untuk mulai mencari aset!
+GET
+
+/api/assets/:id/analytics
+
+Simulates fetching specific on-chain metrics (Royalty Split, Dispute Status).
+
+GET
+
+/api/monitor/agents
+
+Simulates fetching a list of monitored IP assets.
+
+⚙️ Setup and Configuration
+Prerequisites
+Node.js (v18 or newer)
+
+npm or yarn
+
+A valid API Key from the Story Protocol API.
+
+1. Backend Setup (server)
+Navigate to the server directory:
+
+cd server
+
+Install dependencies:
+
+npm install
+
+Configure Environment Variables (CRITICAL STEP):
+Create a new file named .env inside the server/ directory.
+
+Open .env and replace the placeholder with your actual Story Protocol API Key.
+
+# Port for the backend server
+PORT=3001
+
+# Your API Key from Story Protocol (MUST BE VALID)
+STORY_PROTOCOL_API_KEY="sk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" 
+
+2. Frontend Setup (client)
+Navigate to the client directory:
+
+cd client
+
+Install dependencies (including D3.js and React Router):
+
+npm install
+
+Configure Environment Variables:
+The client/.env.example already points to the default backend URL. Create a file named .env and ensure it contains:
+
+VITE_API_BASE_URL="http://localhost:3001/api"
+
+▶️ Running the Application
+You need two separate terminal sessions to run the backend and frontend concurrently.
+
+Start the Backend Server (Terminal 1):
+
+cd server
+npm run dev
+# Console should display: Server is listening on port 3001
+
+Start the Frontend App (Terminal 2):
+
+cd client
+npm run dev
+# Console will display the VITE access URL (usually http://localhost:5173)
+
+Open your browser to the frontend URL to start using the IP Asset Analyzer.

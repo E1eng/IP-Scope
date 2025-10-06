@@ -32,57 +32,47 @@ const SearchBar = ({ onSearch }) => {
     setIsLoading(false);
   };
 
-  // Kelas untuk desain elegan/minimalis
-  const inputClasses = "flex-grow p-3 bg-gray-800 border border-gray-700 rounded-md focus:ring-2 focus:ring-purple-400 font-light";
-  const selectClasses = "w-full sm:w-1/2 p-3 bg-gray-800 border border-gray-700 rounded-md focus:ring-2 focus:ring-pink-400 appearance-none cursor-pointer font-light";
-  const buttonClasses = "p-3 px-6 font-semibold text-white bg-purple-600 rounded-md hover:bg-purple-700 transition-colors disabled:bg-gray-700 disabled:cursor-not-allowed shadow-md";
+  // Compact style
+  const inputClasses = "flex-grow p-2 bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 border border-purple-900 rounded-lg focus:ring-2 focus:ring-purple-400 font-light text-white placeholder:text-gray-400 shadow-md text-sm";
+  const selectClasses = "w-32 p-2 bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 border border-purple-900 rounded-lg focus:ring-2 focus:ring-blue-400 appearance-none cursor-pointer font-light text-white shadow-md text-xs";
+  const buttonClasses = "p-2 px-4 font-bold text-white bg-gradient-to-r from-purple-600 to-blue-600 rounded-lg hover:from-purple-700 hover:to-blue-700 transition-colors disabled:bg-gray-700 disabled:cursor-not-allowed shadow-md text-sm";
 
   return (
-    // Kontainer pencarian lebih simpel
-    <form onSubmit={handleSubmit} className="flex flex-col gap-4 mb-8 p-4 bg-gray-800/80 rounded-lg border border-gray-700 shadow-md">
-      {/* Input dan Button (Baris 1) */}
-      <div className="flex flex-col sm:flex-row gap-4">
-        <input
-          type="text"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search IP assets..."
-          className={inputClasses}
-          required
-        />
-        <button
-          type="submit"
-          disabled={isLoading || !query.trim()}
-          className={buttonClasses}
-        >
-          {isLoading ? 'Searching...' : 'Search Assets'}
-        </button>
-      </div>
-
-      {/* Filter dan Sorting (Baris 2) */}
-      <div className="flex flex-col sm:flex-row gap-4">
-        {/* Media Type Filter */}
-        <select
-          value={mediaType}
-          onChange={(e) => setMediaType(e.target.value)}
-          className={selectClasses}
-        >
-          {MEDIA_TYPES.map(type => (
-            <option key={type.value} value={type.value}>{`Filter: ${type.display}`}</option>
-          ))}
-        </select>
-        
-        {/* Sorting Dropdown */}
-        <select
-            value={sortBy}
-            onChange={(e) => setSortBy(e.target.value)}
-            className={selectClasses}
-        >
-            {SORT_OPTIONS.map(option => (
-                <option key={option.value} value={option.value}>{`Sort: ${option.display}`}</option>
-            ))}
-        </select>
-      </div>
+    // Compact analytic search bar
+    <form onSubmit={handleSubmit} className="flex flex-row gap-2 mb-4 p-2 bg-gradient-to-br from-gray-950 via-gray-900 to-gray-800 rounded-xl border border-purple-900 shadow-md animate-fade-in items-center">
+      <input
+        type="text"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Search IP assets..."
+        className={inputClasses}
+        required
+      />
+      <select
+        value={mediaType}
+        onChange={(e) => setMediaType(e.target.value)}
+        className={selectClasses}
+      >
+        {MEDIA_TYPES.map(type => (
+          <option key={type.value} value={type.value}>{type.display}</option>
+        ))}
+      </select>
+      <select
+        value={sortBy}
+        onChange={(e) => setSortBy(e.target.value)}
+        className={selectClasses}
+      >
+        {SORT_OPTIONS.map(option => (
+          <option key={option.value} value={option.value}>{option.display}</option>
+        ))}
+      </select>
+      <button
+        type="submit"
+        disabled={isLoading || !query.trim()}
+        className={buttonClasses}
+      >
+        {isLoading ? '...' : 'Search'}
+      </button>
     </form>
   );
 };

@@ -35,35 +35,35 @@ const LicenseCard = ({ asset }) => {
   const royaltyRate = hasRoyaltyPolicy && royaltyPolicy.rate ? `${(royaltyPolicy.rate / 10000).toFixed(2)}%` : '0.00%';
 
   return (
-    <div className="bg-gray-800 p-5 rounded-lg shadow-inner border border-purple-700/50">
-      <h4 className="font-semibold text-lg mb-3 text-transparent bg-clip-text bg-gradient-to-r from-green-400 to-cyan-500">
+  <div className="card bg-gradient-to-br from-gray-950 via-gray-900 to-gray-800 p-6 rounded-2xl shadow-xl border border-purple-900">
+      <h4 className="font-extrabold text-lg mb-4 text-transparent bg-clip-text bg-gradient-to-r from-green-400 via-blue-400 to-purple-400 tracking-tight">
         License Summary
       </h4>
       
       {/* Royalty Section */}
       {hasRoyaltyPolicy && (
-          <div className="mb-3 pb-3 border-b border-gray-700">
-              <p className="text-sm font-light text-gray-300 mb-2">Royalty Policy</p>
-              <div className="flex flex-wrap gap-2">
-                  <StatPill label="Royalty Rate" value={royaltyRate} colorClass={royaltyPolicy.rate > 0 ? 'bg-cyan-900/50 text-cyan-300' : 'bg-gray-700 text-gray-400'} />
-                  <StatPill label="Token" value={royaltyPolicy.payoutToken || 'ETH/Default'} colorClass="bg-gray-700 text-gray-400" />
-              </div>
+        <div className="mb-4 pb-4 border-b border-purple-900">
+          <p className="text-sm font-light text-gray-300 mb-2">Royalty Policy</p>
+          <div className="flex flex-wrap gap-3">
+            <StatPill label="Royalty Rate" value={royaltyRate} colorClass={royaltyPolicy.rate > 0 ? 'bg-cyan-900/50 text-cyan-300' : 'bg-gray-700 text-gray-400'} />
+            <StatPill label="Token" value={royaltyPolicy.payoutToken || 'ETH/Default'} colorClass="bg-gray-700 text-gray-400" />
           </div>
+        </div>
       )}
 
       {/* PIL Terms Section */}
       {hasPilTerms && (
         <div>
           <p className="text-sm font-light text-gray-300 mb-2">Public IP License (PIL) Terms</p>
-          <div className="flex flex-wrap gap-2">
-              <StatPill label="Usage" value={termName} colorClass={termColor} />
-              <StatPill label="Transferable" value={pilTerms.transferable ? 'YES' : 'NO'} colorClass={transferColor} />
-              <StatPill label="Derivatives" value={pilTerms.derivativesAllowed ? 'ALLOWED' : 'DENIED'} colorClass={derivativeColor} />
+          <div className="flex flex-wrap gap-3">
+            <StatPill label="Usage" value={termName} colorClass={termColor} />
+            <StatPill label="Transferable" value={pilTerms.transferable ? 'YES' : 'NO'} colorClass={transferColor} />
+            <StatPill label="Derivatives" value={pilTerms.derivativesAllowed ? 'ALLOWED' : 'DENIED'} colorClass={derivativeColor} />
           </div>
           {pilTerms.uri && (
-              <p className="text-xs text-gray-500 mt-3 truncate font-light">
-                  URI: {pilTerms.uri}
-              </p>
+            <p className="text-xs text-gray-500 mt-3 truncate font-light">
+              URI: {pilTerms.uri}
+            </p>
           )}
         </div>
       )}

@@ -7,20 +7,20 @@ const DetailRow = ({ label, value, isLink = false }) => {
   const displayValue = String(value);
 
   return (
-    <div className="flex justify-between py-2 border-b border-gray-700/50 last:border-b-0">
-      <p className="text-sm font-medium text-gray-400">{label}</p>
+    <div className="flex justify-between items-center py-2 border-b border-purple-900 last:border-b-0">
+      <span className="text-xs font-semibold text-purple-300 uppercase tracking-wide">{label}</span>
       {isLink ? (
         <a 
           href={value} 
           target="_blank" 
           rel="noopener noreferrer"
-          className="text-sm font-semibold text-blue-400 hover:text-blue-300 underline break-words max-w-[60%]"
+          className="text-xs font-bold text-blue-400 hover:text-blue-300 underline break-words max-w-[60%]"
           title={displayValue}
         >
           {displayValue.substring(0, 30)}...
         </a>
       ) : (
-        <p className="text-sm font-semibold text-white break-words max-w-[60%]">{displayValue}</p>
+        <span className="text-xs font-bold text-white break-words max-w-[60%]">{displayValue}</span>
       )}
     </div>
   );

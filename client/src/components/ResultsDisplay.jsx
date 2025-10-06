@@ -61,9 +61,9 @@ const ResultsDisplay = ({ isLoading, error, results, hasSearched, onAssetClick, 
     );
   }
 
-  // Mengubah grid layout menjadi 5 kolom di layar ekstra besar
+  // Compact grid
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 py-1">
       {renderContent()}
     </div>
   );

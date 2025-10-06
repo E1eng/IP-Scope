@@ -1,74 +1,98 @@
-import React from 'react';
+
+import React, { useState } from 'react';
 import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom';
 import SearchPage from './pages/SearchPage';
-import IPGraphPage from './pages/IPGraphPage'; 
-import MonitoringPage from './pages/MonitoringPage'; 
+import IPGraphPage from './pages/IPGraphPage';
+import MonitoringPage from './pages/MonitoringPage';
 
-// ▼▼▼ PERBAIKAN: KOMPONEN SIDEBAR DIPINDAHKAN DI LUAR FUNGSI APP ▼▼▼
-const Sidebar = () => {
-  const baseClasses = "flex items-center p-3 my-1 rounded-lg text-gray-300 font-semibold transition-colors";
-  const activeClasses = "bg-purple-600/10 text-purple-400 border-l-4 border-purple-500"; 
-  const hoverClasses = "hover:bg-gray-700/50";
+const navItems = [
+  { to: '/', label: 'Asset Search', icon: (
+    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+  ) },
+  { to: '/ip-graph', label: 'IP Graph', icon: (
+    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+  ) },
+  { to: '/monitoring', label: 'Monitoring', icon: (
+    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
+  ) },
+];
 
+function Sidebar() {
   return (
-    <div className="w-full lg:w-64 bg-gray-800 p-4 rounded-lg shadow-xl sticky top-4 h-fit border border-gray-700">
-      <h2 className="text-xl font-bold text-white mb-6 border-b border-gray-700 pb-3">IP Scope</h2>
-      <nav className="space-y-1">
-        <NavLink 
-          to="/" 
-          className={({ isActive }) => `${baseClasses} ${hoverClasses} ${isActive ? activeClasses : 'hover:text-white'}`}
-        >
-          {/* Ikon Pencarian */}
-          <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-          Asset Search
-        </NavLink>
-        <NavLink 
-          to="/ip-graph"
-          className={({ isActive }) => `${baseClasses} ${hoverClasses} ${isActive ? activeClasses : 'hover:text-white'}`}
-        >
-          {/* Ikon Graph */}
-          <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-          IP Graph View
-        </NavLink>
-        <NavLink 
-          to="/monitoring" 
-          className={({ isActive }) => `${baseClasses} ${hoverClasses} ${isActive ? activeClasses : 'hover:text-white'}`}
-        >
-          {/* Ikon Agen */}
-          <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
-          Monitoring Agents
-        </NavLink>
+    <aside className="fixed left-0 top-0 h-screen w-72 bg-gradient-to-br from-gray-950 via-gray-900 to-gray-800 border-r border-purple-900/40 shadow-2xl rounded-none p-6 z-50 glassmorphism hidden md:flex flex-col">
+      <div className="flex items-center gap-3 mb-10">
+        <img src="/logo.svg" alt="IP Scope Logo" className="w-10 h-10 rounded-xl shadow-lg" />
+        <span className="text-2xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 via-blue-400 to-pink-500 animate-gradient-x">IP Scope</span>
+      </div>
+      <nav className="flex flex-col gap-2 mt-4">
+        {navItems.map(item => (
+          <NavLink
+            key={item.to}
+            to={item.to}
+            className={({ isActive }) =>
+              `flex items-center gap-4 px-5 py-3 rounded-xl font-semibold text-lg transition-all duration-200 ${isActive ? 'bg-purple-900/30 text-purple-300 shadow-lg border-l-4 border-purple-500' : 'text-gray-400 hover:bg-gray-800/60 hover:text-white'}`
+            }
+          >
+            {item.icon}
+            {item.label}
+          </NavLink>
+        ))}
       </nav>
-    </div>
+    </aside>
+
   );
-};
+}
 
 
 function App() {
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   return (
     <BrowserRouter>
-      {/* Container utama lebih longgar dan background lebih gelap */}
-      <div className="min-h-screen bg-gray-900 text-white p-4 md:p-10">
-        <header className="text-center mb-10">
-            <h1 className="text-4xl md:text-5xl font-light tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-500">
-                IP Asset Analyzer
-            </h1>
-            <p className="text-gray-500 mt-2 text-sm font-light">
-                Sophisticated Dashboard for Story Protocol IP.
-            </p>
-        </header>
-        
-        <div className="flex flex-col lg:flex-row gap-6 mx-auto max-w-7xl">
-          <Sidebar />
-          
-          <main className="flex-grow">
-            <Routes>
-              <Route path="/" element={<SearchPage />} />
-              <Route path="/ip-graph" element={<IPGraphPage />} />
-              <Route path="/monitoring" element={<MonitoringPage />} />
-            </Routes>
-          </main>
-        </div>
+      <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-gray-800 text-white flex flex-col">
+          {/* Header removed as per user request */}
+        {/* Sidebar Desktop */}
+        <Sidebar />
+        {/* Sidebar Mobile Drawer */}
+        {sidebarOpen && (
+          <div className="fixed inset-0 z-[100] flex">
+            <aside className="w-72 h-full bg-gradient-to-br from-gray-950 via-gray-900 to-gray-800 border-r border-purple-900/40 shadow-2xl p-6 flex flex-col glassmorphism">
+              <div className="flex items-center gap-3 mb-10">
+                <img src="/logo.svg" alt="IP Scope Logo" className="w-10 h-10 rounded-xl shadow-lg" />
+                <span className="text-2xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 via-blue-400 to-pink-500 animate-gradient-x">IP Scope</span>
+              </div>
+              <nav className="flex flex-col gap-2 mt-4">
+                {navItems.map(item => (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    className={({ isActive }) =>
+                      `flex items-center gap-4 px-5 py-3 rounded-xl font-semibold text-lg transition-all duration-200 ${isActive ? 'bg-purple-900/30 text-purple-300 shadow-lg border-l-4 border-purple-500' : 'text-gray-400 hover:bg-gray-800/60 hover:text-white'}`
+                    }
+                    onClick={() => setSidebarOpen(false)}
+                  >
+                    {item.icon}
+                    {item.label}
+                  </NavLink>
+                ))}
+              </nav>
+              <button className="mt-10 p-2 rounded-lg bg-purple-900/30 text-purple-300 hover:bg-purple-700/40" onClick={() => setSidebarOpen(false)}>
+                Close
+              </button>
+            </aside>
+            <div className="flex-grow bg-black/60" onClick={() => setSidebarOpen(false)}></div>
+          </div>
+        )}
+        {/* Main Content */}
+          <div className="flex flex-row w-full max-w-7xl mx-auto py-8 px-0 md:px-0 md:ml-72">
+            {/* Remove placeholder div, use margin instead */}
+            <main className="flex-grow bg-gradient-to-br from-gray-950 via-gray-900 to-gray-800 rounded-3xl shadow-2xl border border-purple-900/40 p-4 md:p-8 min-h-[70vh] animate-fade-in">
+              <Routes>
+                <Route path="/" element={<SearchPage />} />
+                <Route path="/ip-graph" element={<IPGraphPage />} />
+                <Route path="/monitoring" element={<MonitoringPage />} />
+              </Routes>
+            </main>
+          </div>
       </div>
     </BrowserRouter>
   );

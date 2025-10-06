@@ -32,32 +32,30 @@ const RemixDetailModal = ({ asset, onClose, analytics, interactionType }) => {
       className={`fixed inset-0 bg-black bg-opacity-75 flex justify-center items-center z-50 p-4 transition-opacity duration-300`}
       onClick={onClose}
     >
-      <div 
-        // Desain Modal Minimalis
-        className="bg-gray-900 border border-purple-600 rounded-lg w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden transition-all duration-300 shadow-2xl"
-        onClick={e => e.stopPropagation()}
-      >
-        <div className="p-5 overflow-y-auto">
-          <div className="flex justify-between items-start mb-4 border-b border-gray-700 pb-3">
-              <h2 className="text-2xl font-semibold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-500 line-clamp-2">{modalTitle}</h2>
-              <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors p-1">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-              </button>
-          </div>
+    <div 
+    className="modal bg-gradient-to-br from-gray-950 via-gray-900 to-gray-800 border border-purple-900 rounded-2xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden transition-all duration-300 shadow-2xl animate-fade-in"
+    onClick={e => e.stopPropagation()}
+    >
+    <div className="p-7 overflow-y-auto">
+      <div className="flex justify-between items-start mb-6 border-b border-purple-900 pb-4">
+        <h2 className="text-2xl font-extrabold text-purple-300 tracking-tight line-clamp-2">{modalTitle}</h2>
+        <button onClick={onClose} className="text-purple-400 hover:text-white transition-colors p-2 rounded-lg bg-purple-900/30">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+        </button>
+      </div>
 
-          {/* Image Preview (Kecil) */}
-          <div className="w-full h-32 bg-gray-800 rounded-lg mb-4 overflow-hidden flex items-center justify-center border border-gray-700">
-              {asset.mediaUrl ? (
-                  <img src={asset.mediaUrl} alt={asset.title} className="max-w-full max-h-full object-contain p-2" />
-              ) : (
-                  <div className="p-8 text-gray-500 text-sm">No Image Preview</div>
-              )}
-          </div>
-          
-          {/* License Card */}
-          <div className='mb-4'>
-                <LicenseCard asset={asset} />
-          </div>
+      {/* Image Preview (Kecil) */}
+      <div className="w-full h-32 bg-gradient-to-tr from-purple-900/30 via-gray-800/60 to-blue-900/30 rounded-xl mb-5 overflow-hidden flex items-center justify-center border border-purple-900">
+        {asset.mediaUrl ? (
+          <img src={asset.mediaUrl} alt={asset.title} className="max-w-full max-h-full object-contain p-2 drop-shadow-lg" />
+        ) : (
+          <div className="p-8 text-gray-500 text-sm">No Image Preview</div>
+        )}
+      </div>
+      {/* License Card */}
+      <div className='mb-5'>
+        <LicenseCard asset={asset} />
+      </div>
 
           {/* DYNAMIC TOOLTIPS SECTION (On-Chain Analytics) */}
           {analytics && (

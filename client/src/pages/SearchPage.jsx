@@ -126,56 +126,50 @@ function SearchPage() {
   };
 
   return (
-    <div>
-        {/* Kirim TIGA parameter ke handleSearch: query, mediaType, dan sortBy */}
-        <SearchBar onSearch={(query, mediaType, sortBy) => handleSearch(query, mediaType, sortBy, true)} />
-
-        {/* DASHBOARD LAYOUT (2 COLUMNS) */}
-        <div className="flex flex-col xl:flex-row gap-8">
-            {/* Left Column: Search Results */}
-            <div className={`flex-grow ${selectedAsset ? 'xl:w-2/3' : 'xl:w-full'}`}>
-                {/* Visualisasi Sederhana: Ringkasan Hasil */}
-                {hasSearched && !isLoading && !error && (
-                    <div className="bg-gray-800/50 p-4 rounded-xl border border-gray-700 mb-6 flex justify-between items-center">
-                        <p className="text-gray-400 font-semibold">
-                            Total Hasil Ditemukan: <span className="text-white text-xl">{totalResults.toLocaleString()}</span>
-                        </p>
-                        <p className="text-sm text-purple-400">
-                            Menampilkan {sortedResults.length} aset.
-                        </p>
-                    </div>
-                )}
-
-                <ResultsDisplay
-                    isLoading={isLoading}
-                    error={error}
-                    results={sortedResults} // Menggunakan sortedResults
-                    hasSearched={hasSearched}
-                    onAssetClick={handleOpenDetailPanel}
-                    selectedAssetId={selectedAsset?.ipId}
-                />
-                
-                <div className="text-center mt-8">
-                    {hasMore && !isLoading && (
-                        <button
-                            onClick={handleLoadMore}
-                            disabled={isLoadingMore}
-                            className="p-3 px-6 font-bold bg-purple-600 rounded-md hover:bg-purple-700 transition-colors disabled:bg-gray-700 disabled:cursor-not-allowed"
-                        >
-                            {isLoadingMore ? 'Loading More...' : 'Load More'}
-                        </button>
-                    )}
-                </div>
+    <div className="space-y-8 animate-fade-in">
+      <SearchBar onSearch={(query, mediaType, sortBy) => handleSearch(query, mediaType, sortBy, true)} />
+      <div className="flex flex-col xl:flex-row gap-10">
+        {/* Left Column: Search Results */}
+        <div className="flex-grow xl:w-full transition-all duration-300"> 
+          {/* Sticky Summary */}
+          {hasSearched && !isLoading && !error && (
+            <div className="sticky top-0 z-30 bg-gradient-to-r from-purple-900/40 via-gray-900/80 to-blue-900/40 p-5 rounded-2xl border border-purple-900 mb-8 flex justify-between items-center shadow-xl">
+              <p className="text-purple-300 font-bold text-lg">
+                Total Assets Found: <span className="text-white text-2xl">{totalResults.toLocaleString()}</span>
+              </p>
+              <p className="text-base text-blue-400">
+                Showing {sortedResults.length} assets
+              </p>
             </div>
-
-            {/* Right Column: Asset Detail Panel */}
-            <div className={`xl:w-1/3 transition-all duration-300 ${selectedAsset ? 'opacity-100' : 'opacity-0 xl:h-0'}`}>
-                <AssetDetailPanel 
-                    asset={selectedAsset} 
-                    onClose={handleClosePanel} 
-                />
-            </div>
+          )}
+          <ResultsDisplay
+            isLoading={isLoading}
+            error={error}
+            results={sortedResults}
+            hasSearched={hasSearched}
+            onAssetClick={handleOpenDetailPanel}
+            selectedAssetId={selectedAsset?.ipId}
+          />
+          <div className="text-center mt-10">
+            {hasMore && !isLoading && (
+              <button
+                onClick={handleLoadMore}
+                disabled={isLoadingMore}
+                className="p-4 px-8 font-bold bg-gradient-to-r from-purple-600 to-blue-600 rounded-xl hover:from-purple-700 hover:to-blue-700 transition-colors disabled:bg-gray-700 disabled:cursor-not-allowed shadow-xl text-base"
+              >
+                {isLoadingMore ? 'Loading More...' : 'Load More'}
+              </button>
+            )}
+          </div>
         </div>
+      </div>
+      {/* Floating Modal: Asset Detail Panel */}
+      {selectedAsset && (
+        <AssetDetailPanel 
+          asset={selectedAsset} 
+          onClose={handleClosePanel} 
+        />
+      )}
     </div>
   );
 }

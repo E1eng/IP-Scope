@@ -170,9 +170,12 @@ const IPGraphVisualization = ({ data, onNodeClick, onLinkClick, rootId }) => {
         <div ref={containerRef} className="w-full h-full relative" style={{ minHeight: '70vh' }}>
             <svg ref={svgRef} className="block"></svg>
             {/* Tooltip HTML untuk D3 */}
-            <div id="tooltip" className="absolute opacity-0 bg-gray-900 border border-purple-500 text-xs text-white p-2 rounded pointer-events-none transition-opacity duration-150 shadow-xl"></div>
-        </div>
-    );
+                <div id="tooltip" className="absolute opacity-0 bg-gray-900 border border-purple-500 text-xs text-white p-2 rounded pointer-events-none transition-opacity duration-150 shadow-xl"></div>
+            </div>
+        );
+            <div ref={containerRef} className="w-full h-[500px] bg-gradient-to-br from-gray-950 via-gray-900 to-gray-800 rounded-2xl border border-purple-900 shadow-2xl overflow-hidden animate-fade-in">
+                <svg ref={svgRef} />
+            </div>
 };
 
 export default IPGraphVisualization;

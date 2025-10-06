@@ -1,12 +1,14 @@
 const express = require('express');
-const { searchAssets, getAssetRemixTree } = require('../controllers/asset.controller'); // Diperbarui
+// ▼▼▼ PERBAIKAN: Import getMonitoringAgents ▼▼▼
+const { searchAssets, getAssetRemixTree, getAssetDetail, getMonitoringAgents } = require('../controllers/asset.controller'); 
 
 const router = express.Router();
 
-// Route yang sudah ada
 router.get('/search', searchAssets);
-
-// Route baru untuk pohon remix
+router.get('/assets/:id', getAssetDetail);
 router.get('/assets/:id/remix-tree', getAssetRemixTree);
+
+// ▼▼▼ ROUTE BARU ▼▼▼
+router.get('/monitor/agents', getMonitoringAgents);
 
 module.exports = router;

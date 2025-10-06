@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import axios from 'axios';
 import SearchBar from '../components/SearchBar';
 import ResultsDisplay from '../components/ResultsDisplay';
@@ -8,7 +8,7 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 const PAGE_LIMIT = 20;
 
 function SearchPage() {
-  const [results, setResults] = useState([]);
+  const [rawResults, setRawResults] = useState([]); // Raw results from API
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [error, setError] = useState(null);
@@ -20,8 +20,41 @@ function SearchPage() {
   const [totalResults, setTotalResults] = useState(0);
   const [currentQuery, setCurrentQuery] = useState('');
   const [currentMediaType, setCurrentMediaType] = useState('all');
+  const [currentSortBy, setCurrentSortBy] = useState('default'); // State baru untuk sorting
 
-  const handleSearch = async (query, mediaType, newSearch = true) => {
+  // Fungsi untuk melakukan sorting di client-side
+  const sortedResults = useMemo(() => {
+    if (currentSortBy === 'default') {
+      return rawResults;
+    }
+
+    const [field, direction] = currentSortBy.split('_');
+    
+    // Clone array agar sorting tidak merusak state asli
+    const sorted = [...rawResults].sort((a, b) => {
+      let aVal, bVal;
+      
+      if (field === 'score') {
+        aVal = a.score || 0;
+        bVal = b.score || 0;
+        return direction === 'asc' ? aVal - bVal : bVal - aVal;
+      }
+      
+      if (field === 'date') {
+        // Menggunakan date created yang sudah ada di asset
+        aVal = new Date(a.createdAt).getTime() || 0;
+        bVal = new Date(b.createdAt).getTime() || 0;
+        return direction === 'asc' ? aVal - bVal : bVal - aVal;
+      }
+      
+      return 0;
+    });
+
+    return sorted;
+  }, [rawResults, currentSortBy]);
+
+
+  const handleSearch = async (query, mediaType, sortBy, newSearch = true) => {
     if (!query) return;
 
     newSearch ? setIsLoading(true) : setIsLoadingMore(true);
@@ -29,12 +62,13 @@ function SearchPage() {
     setHasSearched(true);
 
     if (newSearch) {
-      setResults([]);
+      setRawResults([]);
       setOffset(0);
       setTotalResults(0);
       setCurrentQuery(query);
       setCurrentMediaType(mediaType);
-      setSelectedAsset(null);
+      setCurrentSortBy(sortBy); // Set state sorting baru
+      setSelectedAsset(null); 
     }
 
     try {
@@ -48,7 +82,7 @@ function SearchPage() {
       if (mediaType && mediaType !== 'all') {
         params.append('mediaType', mediaType);
       }
-
+      
       const response = await axios.get(
         `${API_BASE_URL}/search?${params.toString()}`,
       );
@@ -56,10 +90,10 @@ function SearchPage() {
       const newResults = response.data.data || [];
       const total = response.data.total || 0;
       
-      const updatedResults = newSearch ? newResults : [...results, ...newResults];
+      const updatedResults = newSearch ? newResults : [...rawResults, ...newResults];
       const newOffset = updatedResults.length;
 
-      setResults(updatedResults);
+      setRawResults(updatedResults);
       setOffset(newOffset);
       
       if (newSearch) {
@@ -79,7 +113,8 @@ function SearchPage() {
   };
 
   const handleLoadMore = () => {
-    handleSearch(currentQuery, currentMediaType, false);
+    // Teruskan state sorting saat memuat lebih banyak
+    handleSearch(currentQuery, currentMediaType, currentSortBy, false);
   };
 
   const handleOpenDetailPanel = (asset) => {
@@ -92,7 +127,8 @@ function SearchPage() {
 
   return (
     <div>
-        <SearchBar onSearch={(query, mediaType) => handleSearch(query, mediaType, true)} />
+        {/* Kirim TIGA parameter ke handleSearch: query, mediaType, dan sortBy */}
+        <SearchBar onSearch={(query, mediaType, sortBy) => handleSearch(query, mediaType, sortBy, true)} />
 
         {/* DASHBOARD LAYOUT (2 COLUMNS) */}
         <div className="flex flex-col xl:flex-row gap-8">
@@ -105,7 +141,7 @@ function SearchPage() {
                             Total Hasil Ditemukan: <span className="text-white text-xl">{totalResults.toLocaleString()}</span>
                         </p>
                         <p className="text-sm text-purple-400">
-                            Menampilkan {results.length} aset.
+                            Menampilkan {sortedResults.length} aset.
                         </p>
                     </div>
                 )}
@@ -113,7 +149,7 @@ function SearchPage() {
                 <ResultsDisplay
                     isLoading={isLoading}
                     error={error}
-                    results={results}
+                    results={sortedResults} // Menggunakan sortedResults
                     hasSearched={hasSearched}
                     onAssetClick={handleOpenDetailPanel}
                     selectedAssetId={selectedAsset?.ipId}

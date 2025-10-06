@@ -23,9 +23,9 @@ const AssetCard = ({ asset, onClick, index, isSelected }) => {
     <div 
       onClick={onClick}
       // Tambahkan kelas untuk menandakan aset yang dipilih (visual feedback dasbor)
-      className={`bg-gray-800 rounded-lg border-2 border-gray-700 shadow-xl transition-all duration-300 transform cursor-pointer flex flex-col 
+      className={`bg-gray-800 rounded-lg border-2 shadow-xl transition-all duration-300 transform cursor-pointer flex flex-col 
       ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}
-      ${isSelected ? 'border-purple-500 shadow-purple-500/40' : 'hover:shadow-purple-500/20 hover:border-purple-500/50 hover:scale-[1.02]'}`}
+      ${isSelected ? 'border-purple-500 shadow-purple-500/40 scale-[1.02]' : 'border-gray-700 hover:shadow-purple-500/20 hover:border-purple-500/50 hover:scale-[1.02]'}`}
       style={{ animationDelay: `${index * 0.05}s` }}
     >
       <div className="w-full h-48 flex items-center justify-center bg-gray-700/50 overflow-hidden">
@@ -41,13 +41,13 @@ const AssetCard = ({ asset, onClick, index, isSelected }) => {
       </div>
       <div className="p-4 flex flex-col flex-grow">
         <h3 className="text-lg font-bold truncate text-purple-400" title={asset.title}>
-          {asset.title || 'Untitled Asset'}
+          {asset.title}
         </h3>
         <p className="text-gray-400 text-sm mt-1 flex-grow line-clamp-3" title={asset.description}>
-          {asset.description || 'No description available.'}
+          {asset.description}
         </p>
         <p className="text-gray-500 text-xs mt-2 self-start truncate w-full">
-          Media: <span className="uppercase font-semibold text-gray-300">{asset.mediaType || 'Unknown'}</span>
+          Media: <span className="uppercase font-semibold text-gray-300">{asset.mediaType}</span>
         </p>
         <p className="text-gray-500 text-xs self-start truncate w-full">
           ID: {asset.ipId}

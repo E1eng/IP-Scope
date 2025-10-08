@@ -1,12 +1,14 @@
 const storyProtocolService = require('../services/storyProtocol.service');
 
 const searchAssets = async (req, res) => {
-  const { query, mediaType, limit, offset } = req.query;
+  // Terima 'sortBy' dari query
+  const { query, mediaType, sortBy, limit, offset } = req.query;
   if (!query) {
     return res.status(400).json({ message: 'Query parameter is required' });
   }
   try {
-    const data = await storyProtocolService.searchIpAssets(query, mediaType, limit, offset);
+    // Teruskan 'sortBy' ke service
+    const data = await storyProtocolService.searchIpAssets(query, mediaType, sortBy, limit, offset);
     res.status(200).json(data);
   } catch (error) {
     console.error('Error in search controller:', error.message);
@@ -19,6 +21,7 @@ const searchAssets = async (req, res) => {
   }
 };
 
+// ... sisa controller (getAssetRemixTree, etc.) tidak berubah ...
 const getAssetRemixTree = async (req, res) => {
   const { id } = req.params;
   if (!id) {
@@ -48,14 +51,12 @@ const getAssetDetail = async (req, res) => {
     }
 };
 
-// ▼▼▼ DEFINISI CONTROLLER ANALITIK BARU ▼▼▼
 const getOnChainAnalyticsController = async (req, res) => {
     const { id } = req.params;
     if (!id) {
         return res.status(400).json({ message: 'Asset ID is required' });
     }
     try {
-        // Panggil fungsi yang benar dari service
         const analytics = await storyProtocolService.getOnChainAnalytics(id);
         res.status(200).json(analytics);
     } catch (error) {
@@ -65,7 +66,6 @@ const getOnChainAnalyticsController = async (req, res) => {
 };
 
 const getMonitoringAgents = async (req, res) => {
-    // Data simulasi untuk fitur Monitoring Agents
     const monitoredAssets = [
         { ipId: "0x434B15f455d0Ed122D025ca7F64F9D9b7033F809", title: "Story Mascot V2", status: "Active", lastCheck: "2025-10-06T10:00:00Z" },
         { ipId: "0xab6e7fCa17A62e47B956df31Ed48Ebee9Ba607aa", title: "Manga Character Alpha", status: "Alert", lastCheck: "2025-10-06T18:00:00Z" },
@@ -79,5 +79,5 @@ module.exports = {
   getAssetRemixTree,
   getAssetDetail, 
   getMonitoringAgents,
-  getOnChainAnalyticsController, // ▼▼▼ EXPORT FUNGSI ANALITIK BARU ▼▼▼
+  getOnChainAnalyticsController,
 };

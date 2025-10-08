@@ -28,18 +28,18 @@ const SearchBar = ({ onSearch }) => {
     if (!query.trim()) return;
 
     setIsLoading(true);
+    // Teruskan sortBy ke fungsi onSearch
     await onSearch(query, mediaType, sortBy); 
     setIsLoading(false);
   };
 
-  // Compact style
-  const inputClasses = "flex-grow p-2 bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 border border-purple-900 rounded-lg focus:ring-2 focus:ring-purple-400 font-light text-white placeholder:text-gray-400 shadow-md text-sm";
-  const selectClasses = "w-32 p-2 bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 border border-purple-900 rounded-lg focus:ring-2 focus:ring-blue-400 appearance-none cursor-pointer font-light text-white shadow-md text-xs";
-  const buttonClasses = "p-2 px-4 font-bold text-white bg-gradient-to-r from-purple-600 to-blue-600 rounded-lg hover:from-purple-700 hover:to-blue-700 transition-colors disabled:bg-gray-700 disabled:cursor-not-allowed shadow-md text-sm";
+  // ▼▼▼ PERBAIKAN: Menambahkan `text-white` dan background yang lebih solid ▼▼▼
+  const inputClasses = "flex-grow p-3 bg-gray-800 border border-gray-700 rounded-md focus:ring-2 focus:ring-purple-500 text-white placeholder:text-gray-400";
+  const selectClasses = "p-3 bg-gray-800 border border-gray-700 rounded-md focus:ring-2 focus:ring-purple-500 text-white";
+  const buttonClasses = "p-3 px-6 font-bold text-white bg-purple-600 rounded-md hover:bg-purple-700 transition-colors disabled:bg-gray-700 disabled:cursor-not-allowed";
 
   return (
-    // Compact analytic search bar
-    <form onSubmit={handleSubmit} className="flex flex-row gap-2 mb-4 p-2 bg-gradient-to-br from-gray-950 via-gray-900 to-gray-800 rounded-xl border border-purple-900 shadow-md animate-fade-in items-center">
+    <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-2 mb-8 p-2 bg-gray-900/50 rounded-xl border border-gray-700">
       <input
         type="text"
         value={query}

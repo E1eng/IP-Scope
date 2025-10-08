@@ -62,9 +62,10 @@ IP-Scope/
     │       └── storyProtocol.service.js 
     ├── .env.
     ├── .gitignore
-    └── package.json
+    └── package.json 
+    ---
 
- ## 🗺️ API Endpoints Summary
+## 🗺️ API Endpoints Summary
 
 The backend exposes the following robust API routes (all prefixed with `/api`):
 

@@ -59,11 +59,10 @@ const getIpAsset = async (ipId) => {
     }
 }
 
-// ▼▼▼ PERUBAHAN UTAMA DI SINI ▼▼▼
 const searchIpAssets = async (query, mediaType, sortBy = 'default', limit = 20, offset = 0) => {
     checkApiKey();
   
-    let searchResponse, detailsResponse;
+    let searchResponse;
 
     try {
       const searchBody = {
@@ -78,18 +77,10 @@ const searchIpAssets = async (query, mediaType, sortBy = 'default', limit = 20, 
         searchBody.mediaType = mediaType;
       }
 
-      // Menambahkan logika sorting ke body request
       if (sortBy && sortBy !== 'default') {
           const [field, direction] = sortBy.split('_');
-          if (field === 'score') {
-              searchBody.orderBy = 'score';
-              searchBody.orderDirection = direction;
-          }
-          if (field === 'date') {
-              // Asumsi API menggunakan 'createdAt' untuk sorting tanggal
-              searchBody.orderBy = 'createdAt';
-              searchBody.orderDirection = direction;
-          }
+          searchBody.orderBy = field;
+          searchBody.orderDirection = direction;
       }
   
       searchResponse = await axios.post(SEARCH_URL, searchBody, { headers: apiHeaders });
@@ -104,7 +95,7 @@ const searchIpAssets = async (query, mediaType, sortBy = 'default', limit = 20, 
           where: { ipIds: ipIdsToFetch },
           includeLicenses: true
       };
-      detailsResponse = await axios.post(ASSETS_DETAIL_URL, detailsBody, { headers: apiHeaders });
+      const detailsResponse = await axios.post(ASSETS_DETAIL_URL, detailsBody, { headers: apiHeaders });
 
       const detailedAssets = detailsResponse.data.data || [];
       const detailsMap = new Map(detailedAssets.map(asset => [asset.ipId, asset]));
@@ -114,9 +105,16 @@ const searchIpAssets = async (query, mediaType, sortBy = 'default', limit = 20, 
         return normalizeAssetData({ ...asset, ...details });
       });
       
+      // ▼▼▼ PERBAIKAN UTAMA DI SINI ▼▼▼
+      // Pastikan `total` dari hasil pencarian asli yang digunakan
+      const finalPagination = {
+          ...searchResponse.data.pagination,
+          total: searchResponse.data.total || 0
+      };
+
       return { 
           data: enrichedAssets, 
-          pagination: searchResponse.data.pagination 
+          pagination: finalPagination 
       };
 
     } catch (error) {
@@ -210,7 +208,6 @@ const getOnChainAnalytics = async (ipId) => {
         totalRoyaltiesClaimed: `${claimed} ETH`,
     };
 };
-
 
 module.exports = {
   searchIpAssets,

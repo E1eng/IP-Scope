@@ -2,8 +2,7 @@ import React, { useState } from 'react';
 import axios from 'axios';
 import SearchBar from '../components/SearchBar';
 import ResultsDisplay from '../components/ResultsDisplay';
-// Kita akan panggil modal, bukan panel lagi
-import AssetDetailModal from '../components/AssetDetailModal';
+import AssetDetailPanel from '../components/AssetDetailPanel';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 const PAGE_LIMIT = 20;
@@ -16,10 +15,6 @@ function SearchPage() {
   const [hasSearched, setHasSearched] = useState(false);
   const [selectedAsset, setSelectedAsset] = useState(null);
   
-  // State untuk Remix Tree di dalam modal
-  const [remixTreeData, setRemixTreeData] = useState(null);
-  const [isTreeLoading, setIsTreeLoading] = useState(false);
-  
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const [totalResults, setTotalResults] = useState(0);
@@ -28,11 +23,12 @@ function SearchPage() {
   const [currentSortBy, setCurrentSortBy] = useState('default');
 
   const handleSearch = async (query, mediaType, sortBy, newSearch = true) => {
-    // ... (logika handleSearch tidak berubah) ...
     if (!query) return;
+
     newSearch ? setIsLoading(true) : setIsLoadingMore(true);
     setError(null);
     setHasSearched(true);
+
     if (newSearch) {
       setResults([]);
       setOffset(0);
@@ -42,6 +38,7 @@ function SearchPage() {
       setCurrentSortBy(sortBy);
       setSelectedAsset(null); 
     }
+
     try {
       const currentOffset = newSearch ? 0 : offset;
       const params = new URLSearchParams({
@@ -50,22 +47,35 @@ function SearchPage() {
         offset: currentOffset,
         sortBy: sortBy,
       });
+
       if (mediaType && mediaType !== 'all') {
         params.append('mediaType', mediaType);
       }
-      const response = await axios.get(`${API_BASE_URL}/search?${params.toString()}`);
+      
+      const response = await axios.get(
+        `${API_BASE_URL}/search?${params.toString()}`,
+      );
+      
       const newResults = response.data.data || [];
+      // ▼▼▼ PERBAIKAN: Ambil total dari objek pagination, bukan dari root ▼▼▼
       const total = response.data.pagination?.total || 0;
+      
       const updatedResults = newSearch ? newResults : [...results, ...newResults];
       const newOffset = updatedResults.length;
+
       setResults(updatedResults);
       setOffset(newOffset);
+      
       if (newSearch) {
         setTotalResults(total);
       }
+      // Logika hasMore sekarang akan berfungsi dengan benar
       setHasMore(newOffset < total);
+      
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to fetch assets.');
+      setError(
+        err.response?.data?.message || 'Failed to fetch assets. See console for details.'
+      );
       console.error('API Call Error:', err.response ? err.response.data : err.message);
     } finally {
       newSearch ? setIsLoading(false) : setIsLoadingMore(false);
@@ -76,30 +86,12 @@ function SearchPage() {
     handleSearch(currentQuery, currentMediaType, currentSortBy, false);
   };
 
-  const handleOpenModal = (asset) => {
+  const handleOpenDetailPanel = (asset) => {
     setSelectedAsset(asset);
-    // Reset data tree saat modal baru dibuka
-    setRemixTreeData(null); 
-    setIsTreeLoading(false);
   };
   
-  const handleCloseModal = () => {
+  const handleClosePanel = () => {
     setSelectedAsset(null);
-  };
-
-  // Fungsi untuk mengambil data Remix Tree
-  const handleFetchTree = async (ipId) => {
-      setIsTreeLoading(true);
-      try {
-          const response = await axios.get(`${API_BASE_URL}/assets/${ipId}/remix-tree`);
-          setRemixTreeData(response.data);
-      } catch (error) {
-          console.error("Failed to fetch remix tree", error);
-          // Set data error agar bisa ditampilkan di UI
-          setRemixTreeData({ error: "Failed to load remix tree." });
-      } finally {
-          setIsTreeLoading(false);
-      }
   };
 
   return (
@@ -124,7 +116,7 @@ function SearchPage() {
           error={error}
           results={results}
           hasSearched={hasSearched}
-          onAssetClick={handleOpenModal}
+          onAssetClick={handleOpenDetailPanel}
           selectedAssetId={selectedAsset?.ipId}
         />
         <div className="text-center mt-10">
@@ -140,14 +132,11 @@ function SearchPage() {
         </div>
       </div>
 
-      {/* Panggil AssetDetailModal di sini */}
+      {/* Panggil AssetDetailPanel di sini, yang akan bertindak sebagai modal */}
       {selectedAsset && (
-        <AssetDetailModal 
+        <AssetDetailPanel 
           asset={selectedAsset} 
-          onClose={handleCloseModal}
-          onViewTree={handleFetchTree}
-          remixTreeData={remixTreeData}
-          isTreeLoading={isTreeLoading}
+          onClose={handleClosePanel} 
         />
       )}
     </div>

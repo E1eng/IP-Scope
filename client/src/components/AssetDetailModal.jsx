@@ -1,119 +1,93 @@
-import React, { useState, useEffect } from 'react';
-import RemixTreeView from './RemixTreeView'; // Import komponen baru
+import React from 'react';
+import LicenseCard from './LicenseCard'; 
+import DetailRow from './DetailRow'; 
 
-const DetailRow = ({ label, value }) => {
-  if (value === null || value === undefined || value === '') return null;
-  return (
-    <div className="py-2 border-b border-gray-800">
-      <p className="text-sm font-bold text-gray-400">{label}</p>
-      <p className="text-base text-white break-words">{value}</p>
+const PlaceholderStat = ({ title, value, colorClass }) => (
+    <div className={`p-3 rounded-lg ${colorClass} flex flex-col justify-center items-start border border-gray-700/50 shadow-sm`}>
+        <p className="text-xs font-light text-gray-400 uppercase tracking-wider">{title}</p>
+        <p className="text-xl font-semibold text-white mt-1">{value}</p>
     </div>
-  );
-};
+);
 
-// Tambahkan prop baru untuk fitur tree
-const AssetDetailModal = ({ asset, onClose, onViewTree, remixTreeData, isTreeLoading }) => {
-  const [show, setShow] = useState(false);
-  // State lokal untuk mengontrol tampilan: detail atau tree
-  const [view, setView] = useState('details'); // 'details' atau 'tree'
+const AssetDetailModal = ({ asset, onClose }) => {
+    if (!asset) {
+        return null;
+    }
 
-  useEffect(() => {
-    const timer = setTimeout(() => setShow(true), 50); 
-    return () => clearTimeout(timer);
-  }, []);
+    const formattedDate = asset.createdAt ? new Date(asset.createdAt).toLocaleDateString('id-ID', {
+        year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit'
+    }) : 'N/A';
+    const creatorName = asset.nftMetadata?.raw?.metadata?.creators?.[0]?.name || 'Unknown Creator';
+    const parentIpId = asset.parents && asset.parents.length > 0 && asset.parents[0].ipId !== '0x0000000000000000000000000000000000000000' ? asset.parents[0].ipId : null;
+    const parentIpName = asset.parents && asset.parents.length > 0 && asset.parents[0].name || 'N/A';
+    const parentDisplay = parentIpId ? `${parentIpName} (ID: ${parentIpId.substring(0, 6)}...)` : 'Original/Root Asset';
 
-  const handleClose = () => {
-    // Reset view state saat modal ditutup
-    setView('details');
-    setShow(false);
-    setTimeout(onClose, 300); 
-  };
-  
-  // Logic untuk beralih tampilan dan memuat tree
-  const handleViewTreeClick = () => {
-      setView('tree');
-      // Panggil fungsi fetch tree dari App.jsx
-      if (!remixTreeData && !isTreeLoading) {
-          onViewTree(asset.ipId);
-      }
-  }
+    return (
+        // Backdrop modal
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm animate-fade-in" onClick={onClose}>
+            {/* Konten Modal */}
+            <div className="w-full max-w-2xl bg-gray-900 border border-purple-900/50 rounded-2xl p-6 flex flex-col overflow-hidden shadow-2xl relative" style={{ maxHeight: '90vh' }} onClick={e => e.stopPropagation()}>
+                
+                {/* Tombol Close di pojok kanan atas */}
+                <button
+                    onClick={onClose}
+                    className="absolute top-4 right-4 z-50 bg-gray-800/50 hover:bg-purple-900/50 text-purple-300 hover:text-white rounded-full p-2 shadow-lg transition-colors"
+                    aria-label="Close detail panel"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
 
-  const handleViewDetailsClick = () => {
-      setView('details');
-  }
+                <div className="pb-4 mb-6 border-b border-purple-900/50">
+                    <h1 className="text-2xl font-bold text-white tracking-tight line-clamp-1 pr-12">
+                        {asset.title}
+                    </h1>
+                </div>
 
-  if (!asset) return null;
+                <div className="flex-grow space-y-6 overflow-y-auto pr-2 custom-scrollbar">
+                    <div className="flex flex-col sm:flex-row gap-6">
+                        <div className="w-full sm:w-1/3 h-40 bg-gray-800 rounded-xl overflow-hidden flex items-center justify-center border border-purple-900/30 flex-shrink-0">
+                            {asset.mediaUrl ? (
+                                <img src={asset.mediaUrl} alt={asset.title} className="max-w-full max-h-full object-contain p-2" />
+                            ) : (
+                                <div className="p-6 text-gray-500 text-xs">No Image</div>
+                            )}
+                        </div>
+                        <div className='flex-grow flex flex-col justify-center'>
+                            <p className="text-sm text-gray-300 font-light line-clamp-5 max-h-32 overflow-hidden">
+                                {asset.description || 'No description available.'}
+                            </p>
+                        </div>
+                    </div>
+                    {/* Mengembalikan LicenseCard */}
+                    <LicenseCard asset={asset} />
+                    <div className='grid grid-cols-2 gap-4'>
+                        <PlaceholderStat title="Similarity Score" value={asset.similarity ? asset.similarity.toFixed(4) : 'N/A'} colorClass="bg-gray-800/50" />
+                        <PlaceholderStat title="Children Count" value={asset.childrenCount} colorClass="bg-gray-800/50" />
+                    </div>
+                    <div className="space-y-2 pt-4 border-t border-purple-900/50 text-sm">
+                        <h3 className="font-semibold text-purple-300 mb-2">Key Details</h3>
+                        <DetailRow label="IP ID" value={asset.ipId} />
+                        <DetailRow label="Media Type" value={asset.mediaType} />
+                        <DetailRow label="Parent IP" value={parentDisplay} />
+                        <DetailRow label="Creator" value={creatorName} />
+                        <DetailRow label="Contract Address" value={asset.nftMetadata?.contract_address} />
+                        <DetailRow label="Date Created" value={formattedDate} />
+                    </div>
+                </div>
 
-  const formattedDate = asset.createdAt ? new Date(asset.createdAt).toLocaleDateString('id-ID', {
-    year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit'
-  }) : null;
-
-  const creatorName = asset.nftMetadata?.raw?.metadata?.creators?.[0]?.name;
-
-  return (
-    <div 
-      className={`fixed inset-0 bg-black/80 flex justify-center items-center z-50 p-4 transition-opacity duration-300 ease-in-out ${show ? 'bg-opacity-80' : 'bg-opacity-0'}`}
-      onClick={handleClose}
-    >
-      <div 
-        className={`modal bg-gradient-to-br from-gray-950 via-gray-900 to-gray-800 border border-purple-900 rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col md:flex-row overflow-hidden shadow-2xl transition-all duration-300 ease-in-out ${show ? 'opacity-100 translate-y-0 scale-100 animate-fade-in' : 'opacity-0 -translate-y-10 scale-95'}`}
-        onClick={e => e.stopPropagation()}
-      >
-        {/* Kolom Kiri: Gambar */}
-        <div className="w-full md:w-1/2 bg-gradient-to-tr from-purple-900/30 via-gray-800/60 to-blue-900/30 flex items-center justify-center p-6 border-r border-purple-900">
-          {asset.mediaUrl ? ( <img src={asset.mediaUrl} alt={asset.title} className="max-w-full max-h-full object-contain rounded-xl drop-shadow-lg" /> ) : ( <div className="p-8 text-gray-500">No Image Available</div> )}
+                <div className="mt-8 pt-6 border-t border-purple-900/50 flex-shrink-0">
+                    <a 
+                        href={`https://explorer.storyprotocol.xyz/ip-assets/${asset.ipId}`} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="w-full inline-flex items-center justify-center p-3 font-bold bg-gradient-to-r from-purple-600 to-blue-600 rounded-xl hover:from-purple-700 hover:to-blue-700 transition-colors text-white shadow-lg text-base"
+                    >
+                        View on Explorer
+                    </a>
+                </div>
+            </div>
         </div>
-        {/* Kolom Kanan: Detail & Tree View */}
-        <div className="w-full md:w-1/2 p-8 overflow-y-auto flex flex-col">
-          <h2 className="text-3xl font-extrabold text-purple-300 mb-6 tracking-tight">{asset.title || 'Untitled Asset'}</h2>
-          {/* Tab/Selector View (UX Improvement) */}
-          <div className="flex mb-6 border-b border-purple-900 gap-2">
-            <button 
-              onClick={handleViewDetailsClick}
-              className={`py-2 px-6 font-semibold rounded-t-xl transition-colors ${view === 'details' ? 'bg-purple-900/40 text-purple-300 border-b-2 border-purple-500 shadow-md' : 'text-gray-400 hover:text-white'}`}
-            >
-              Details
-            </button>
-            <button 
-              onClick={handleViewTreeClick}
-              disabled={isTreeLoading}
-              className={`py-2 px-6 font-semibold rounded-t-xl transition-colors disabled:opacity-50 ${view === 'tree' ? 'bg-purple-900/40 text-purple-300 border-b-2 border-purple-500 shadow-md' : 'text-gray-400 hover:text-white'}`}
-            >
-              {isTreeLoading ? 'Loading Tree...' : 'Remix Tree'}
-            </button>
-          </div>
-          {/* Content Area */}
-          <div className="flex-grow">
-            {view === 'details' ? (
-              <div className="space-y-3">
-                <DetailRow label="Description" value={asset.description} />
-                <DetailRow label="IP ID" value={asset.ipId} />
-                <DetailRow label="Similarity" value={asset.similarity?.toFixed(4)} />
-                <DetailRow label="Score" value={asset.score?.toFixed(4)} />
-                <DetailRow label="Media Type" value={asset.mediaType} />
-                <DetailRow label="Parents Count" value={asset.parentsCount} />
-                <DetailRow label="Creator" value={creatorName} />
-                <DetailRow label="Contract Address" value={asset.nftMetadata?.contract_address} />
-                <DetailRow label="Created At" value={formattedDate} />
-              </div>
-            ) : (
-              <RemixTreeView 
-                treeData={remixTreeData}
-                isTreeLoading={isTreeLoading}
-                startAssetId={asset.ipId}
-              />
-            )}
-          </div>
-          <button
-            onClick={handleClose}
-            className="mt-8 w-full p-3 font-bold bg-gradient-to-r from-purple-600 to-blue-600 rounded-xl hover:from-purple-700 hover:to-blue-700 transition-colors shadow-lg text-white text-lg"
-          >
-            Close
-          </button>
-        </div>
-      </div>
-    </div>
-  );
+    );
 };
 
 export default AssetDetailModal;

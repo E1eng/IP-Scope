@@ -1,42 +1,24 @@
 const storyProtocolService = require('../services/storyProtocol.service');
 
+// SEARCH ASSETS
 const searchAssets = async (req, res) => {
-  // Terima 'sortBy' dari query
   const { query, mediaType, sortBy, limit, offset } = req.query;
   if (!query) {
     return res.status(400).json({ message: 'Query parameter is required' });
   }
   try {
-    // Teruskan 'sortBy' ke service
     const data = await storyProtocolService.searchIpAssets(query, mediaType, sortBy, limit, offset);
     res.status(200).json(data);
   } catch (error) {
     console.error('Error in search controller:', error.message);
-    
-    const errorMessage = error.message.includes('API Key') 
-      ? "API Key Error: Please check your STORY_PROTOCOL_API_KEY in the server/.env file." 
+    const errorMessage = error.message.includes('API Key')
+      ? "API Key Error: Please check your STORY_PROTOCOL_API_KEY in the server/.env file."
       : `Backend Error: ${error.message}`;
-
     res.status(500).json({ message: errorMessage });
   }
 };
 
-// ... sisa controller (getAssetRemixTree, etc.) tidak berubah ...
-const getAssetRemixTree = async (req, res) => {
-  const { id } = req.params;
-  if (!id) {
-    return res.status(400).json({ message: 'Asset ID is required' });
-  }
-  try {
-    const treeData = await storyProtocolService.buildRemixTree(id); 
-    res.status(200).json(treeData);
-  } catch (error) {
-    console.error('Error in tree controller:', error.message);
-    const errorMessage = error.message.includes('API Key') ? error.message : `Failed to fetch remix tree data for ID ${id}.`;
-    res.status(500).json({ message: errorMessage });
-  }
-};
-
+// GET ASSET DETAILS
 const getAssetDetail = async (req, res) => {
     const { id } = req.params;
     if (!id) {
@@ -51,6 +33,23 @@ const getAssetDetail = async (req, res) => {
     }
 };
 
+// GET REMIX TREE
+const getAssetRemixTree = async (req, res) => {
+  const { id } = req.params;
+  if (!id) {
+    return res.status(400).json({ message: 'Asset ID is required' });
+  }
+  try {
+    const treeData = await storyProtocolService.buildRemixTree(id);
+    res.status(200).json(treeData);
+  } catch (error) {
+    console.error('Error in tree controller:', error.message);
+    const errorMessage = error.message.includes('API Key') ? error.message : `Failed to fetch remix tree data for ID ${id}.`;
+    res.status(500).json({ message: errorMessage });
+  }
+};
+
+// GET ON-CHAIN ANALYTICS
 const getOnChainAnalyticsController = async (req, res) => {
     const { id } = req.params;
     if (!id) {
@@ -65,19 +64,11 @@ const getOnChainAnalyticsController = async (req, res) => {
     }
 };
 
-const getMonitoringAgents = async (req, res) => {
-    const monitoredAssets = [
-        { ipId: "0x434B15f455d0Ed122D025ca7F64F9D9b7033F809", title: "Story Mascot V2", status: "Active", lastCheck: "2025-10-06T10:00:00Z" },
-        { ipId: "0xab6e7fCa17A62e47B956df31Ed48Ebee9Ba607aa", title: "Manga Character Alpha", status: "Alert", lastCheck: "2025-10-06T18:00:00Z" },
-    ];
-    res.status(200).json(monitoredAssets);
-};
 
 
 module.exports = {
   searchAssets,
+  getAssetDetail,
   getAssetRemixTree,
-  getAssetDetail, 
-  getMonitoringAgents,
   getOnChainAnalyticsController,
 };

@@ -1,10 +1,14 @@
 const axios = require('axios');
+const { client } = require('../utils/storyClient'); // Impor klien SDK
+const { parseEther } = require("viem");
+const { DisputeTargetTag } = require("@story-protocol/core-sdk");
 
 // ... (kode BASE_URL, apiKey, apiHeaders, checkApiKey, normalizeAssetData, getIpAsset tidak berubah) ...
 const BASE_URL = 'https://api.storyapis.com/api/v4';
 const SEARCH_URL = `${BASE_URL}/search`;
 const ASSETS_DETAIL_URL = `${BASE_URL}/assets`; 
 const ASSETS_EDGES_URL = `${BASE_URL}/assets/edges`; 
+
 
 const apiKey = process.env.STORY_PROTOCOL_API_KEY;
 const apiHeaders = { 'X-Api-Key': apiKey, 'Content-Type': 'application/json' };

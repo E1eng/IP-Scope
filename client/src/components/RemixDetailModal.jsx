@@ -85,7 +85,7 @@ const RoyaltyLedgerTab = ({ ipId }) => {
                     </div>
                     <div className="text-right">
                         <p className="font-bold text-green-400">{tx.value}</p>
-                        <a href={`https://storyscan.io/tx/${tx.txHash}`} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">View on Explorer</a>
+                        <a href={`https://storyscan.io/tx/${tx.txHash}`} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">View on Story Scan</a>
                     </div>
                 </div>
             ))}
@@ -149,9 +149,9 @@ const RemixDetailModal = ({ asset, onClose, analytics, interactionType }) => {
         </div>
       );
     }
-  const formattedDate = asset.createdAt ? new Date(asset.createdAt).toLocaleDateString('id-ID', {
-    year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit'
-  }) : 'N/A';
+  const formattedDate = asset.createdAt ? new Date(asset.createdAt).toLocaleDateString('en-US', {
+        year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit'
+    }) : 'N/A';
 
   const creatorName = asset.nftMetadata?.raw?.metadata?.creators?.[0]?.name || 'Unknown Creator';
 
@@ -204,7 +204,7 @@ const RemixDetailModal = ({ asset, onClose, analytics, interactionType }) => {
                 {activeTab === 'licensees' && <TopLicenseesTab ipId={asset.ipId} />}
             </div>
             <div className="p-7 flex-shrink-0 border-t border-purple-900">
-                <a href={`https://explorer.storyprotocol.xyz/ip-assets/${asset.ipId}`} target="_blank" rel="noopener noreferrer" className="w-full inline-flex items-center justify-center p-3 font-bold bg-purple-600 rounded-md hover:bg-purple-700 transition-colors text-white">
+                <a href={`https://explorer.story.foundation/ipa/${asset.ipId}`} target="_blank" rel="noopener noreferrer" className="w-full inline-flex items-center justify-center p-3 font-bold bg-purple-600 rounded-md hover:bg-purple-700 transition-colors text-white">
                     View on Explorer
                 </a>
             </div>

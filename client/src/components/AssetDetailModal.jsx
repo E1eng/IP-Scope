@@ -127,12 +127,12 @@ const AssetDetailModal = ({ asset, onClose, onViewTree, remixTreeData, isTreeLoa
           </div>
             <div className="flex gap-4 mt-6">
               <a 
-                  href={`https://explorer.storyprotocol.xyz/ip-assets/${asset.ipId}`} 
+                  href={`https://portal.story.foundation/user/${asset.ipId}`} 
                   target="_blank" 
                   rel="noopener noreferrer"
                   className="w-full inline-flex items-center justify-center p-3 font-bold bg-gradient-to-r from-purple-600 to-blue-600 rounded-xl hover:from-purple-700 hover:to-blue-700 transition-colors text-white"
               >
-                  View on Explorer
+                  View on Portal
               </a>
             </div>
         </div>

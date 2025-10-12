@@ -1,6 +1,8 @@
 import React, { useRef, useEffect } from 'react';
 import * as d3 from 'd3';
 
+// --- Komponen Ikon Dihapus dari sini ---
+
 const IPGraphVisualization = ({ data, onNodeClick, onLinkClick, rootId }) => {
     const svgRef = useRef(null);
     const containerRef = useRef(null);
@@ -22,163 +24,130 @@ const IPGraphVisualization = ({ data, onNodeClick, onLinkClick, rootId }) => {
         const svg = d3.select(svgRef.current)
             .attr("width", width)
             .attr("height", height)
-            .attr("viewBox", [0, 0, width, height]);
+            .attr("viewBox", [-width / 2, -height / 2, width, height]);
 
         const g = svg.append("g");
-
-        const maxRoyalties = d3.max(nodes, d => d.analytics?.totalRoyaltiesClaimed) || 1;
-        const radiusScale = d3.scaleSqrt()
-            .domain([0, maxRoyalties])
-            .range([8, 30]); 
-
-        const colorMap = {
-            'IMAGE': '#4CAF50', 'VIDEO': '#2196F3', 'AUDIO': '#FF9800', 
-            'TEXT': '#9C27B0', 'COLLECTION': '#E91E63', 'UNKNOWN': '#607D8B', 'ERROR': '#F44336'
-        };
-        // --- FUNGSI WARNA DIPERBARUI UNTUK STATUS SENGKETA ---
-        const getNodeColor = (d) => {
-            if (d.analytics?.disputeStatus === 'Active') return '#F44336'; // Merah untuk sengketa
-            if (d.id === rootId) return '#FFD700'; // Emas untuk root
-            return colorMap[d.mediaType] || colorMap['UNKNOWN'];
-        };
         
-        function drag(simulation) {
-            function dragstarted(event) {
-                if (!event.active) simulation.alphaTarget(0.3).restart();
-                event.subject.fx = event.subject.x;
-                event.subject.fy = event.subject.y;
-            }
-            function dragged(event) {
-                event.subject.fx = event.x;
-                event.subject.fy = event.y;
-            }
-            function dragended(event) {
-                if (!event.active) simulation.alphaTarget(0);
-                event.subject.fx = null;
-                event.subject.fy = null;
-            }
-            return d3.drag().on("start", dragstarted).on("drag", dragged).on("end", dragended);
-        }
-        
-        svg.append("defs").selectAll("marker")
-            .data(["arrow"])
-            .join("marker")
-            .attr("id", "arrow")
-            .attr("viewBox", "0 -5 10 10")
-            .attr("refX", 18) 
-            .attr("refY", 0)
-            .attr("markerWidth", 6)
-            .attr("markerHeight", 6)
-            .attr("orient", "auto")
-            .append("path")
-            .attr("fill", "#666")
-            .attr("d", "M0,-5L10,0L0,5");
-
         const simulation = d3.forceSimulation(nodes)
-            .force("link", d3.forceLink(links).id(d => d.id).distance(180)) 
-            .force("charge", d3.forceManyBody().strength(-800)) 
-            .force("center", d3.forceCenter(width / 2, height / 2));
+            .force("link", d3.forceLink(links).id(d => d.id).distance(150).strength(0.5))
+            .force("charge", d3.forceManyBody().strength(-600))
+            .force("center", d3.forceCenter(0, 0))
+            .force("x", d3.forceX().strength(0.05))
+            .force("y", d3.forceY().strength(0.05));
 
         const link = g.append("g")
-            .attr("stroke", "#4A4A4A").attr("stroke-opacity", 0.6)
-            .selectAll("line").data(links).join("line")
-            .attr("stroke-width", 3).attr("marker-end", "url(#arrow)")
-            .attr("class", "link transition-opacity duration-150")
-            .on("click", (event, d) => onLinkClick(d.target.id)) 
-            .attr("cursor", "pointer");
+            .attr("stroke", "#4A4A4A")
+            .attr("stroke-opacity", 0.6)
+            .selectAll("line")
+            .data(links)
+            .join("line")
+            .attr("stroke-width", 2);
 
-        const particles = [];
-        links.forEach(link => {
-            const targetNode = nodes.find(n => n.id === link.target.id);
-            const royaltyRate = parseFloat(targetNode?.analytics?.royaltySplit) || 0;
-            const numParticles = Math.ceil(royaltyRate / 5) + 1; 
-            for (let i = 0; i < numParticles; i++) {
-                particles.push({ link: link, progress: Math.random() });
-            }
-        });
-
-        const particle = g.append("g")
-            .selectAll(".particle").data(particles).enter()
-            .append("circle").attr("r", 2).attr("fill", "#00f5d4"); 
-
-        const nodeGroup = g.append("g").selectAll("g").data(nodes).join("g")
-            .attr("class", "node-group transition-all duration-300 ease-in-out")
-            .call(drag(simulation))
+        const nodeGroup = g.append("g")
+            .selectAll("g")
+            .data(nodes)
+            .join("g")
+            .attr("cursor", "pointer")
             .on("click", (event, d) => onNodeClick(d.id))
-            .on("mouseover", function(event, d) {
-                
-                link.attr('stroke-opacity', l => (l.source.id === d.id || l.target.id === d.id) ? 1.0 : 0.1)
-                    .attr('stroke', l => (l.source.id === d.id || l.target.id === d.id) ? '#B855FF' : '#4A4A4A');
-                
-                d3.selectAll('.node-group').attr('opacity', n => (d.id === n.id || links.some(l => (l.source.id === d.id && l.target.id === n.id) || (l.target.id === d.id && l.source.id === n.id))) ? 1.0 : 0.3);
+            .call(drag(simulation));
 
-                d3.select("#tooltip")
-                    .style("opacity", 1)
-                    .html(`
-                        <strong>${d.title}</strong><br/>
-                        Type: ${d.mediaType}<br/>
-                        ID: ${d.id.substring(0, 12)}...<br/>
-                        Total Royalties: <strong>${d.analytics?.totalRoyaltiesClaimed?.toLocaleString() || 'N/A'}</strong>
-                        ${d.analytics?.disputeStatus === 'Active' ? '<br/><strong style="color: #F44336;">IN DISPUTE</strong>' : ''}
-                    `)
-                    .style("left", (event.pageX + 15) + "px")
-                    .style("top", (event.pageY - 15) + "px");
-            })
-            .on("mouseout", function() {
-                d3.select(this).select('circle').attr("r", d => radiusScale(d.analytics?.totalRoyaltiesClaimed || 0)); 
-                d3.select(this).select('text').attr('font-weight', 'normal').attr('fill', '#ccc');
-                
-                link.attr('stroke-opacity', 0.6).attr('stroke', '#4A4A4A');
-                d3.selectAll('.node-group').attr('opacity', 1.0);
-                d3.select("#tooltip").style("opacity", 0);
-            });
-
-        // --- STROKE DIPERBARUI UNTUK STATUS SENGKETA ---
         nodeGroup.append("circle")
-            .attr("r", d => radiusScale(d.analytics?.totalRoyaltiesClaimed || 0))
-            .attr("fill", getNodeColor)
-            .attr("stroke", d => d.analytics?.disputeStatus === 'Active' ? '#F44336' : (d.id === rootId ? '#FFF' : '#eee'))
-            .attr("stroke-width", d => d.analytics?.disputeStatus === 'Active' ? 4 : (d.id === rootId ? 3 : 2))
-            .attr("cursor", "pointer");
+            .attr("r", 22)
+            .attr("fill", d => d.id === rootId ? '#FFD700' : (d.analytics?.disputeStatus === 'Active' ? '#F44336' : '#5A429C'))
+            .attr("class", d => d.id === rootId ? 'animate-pulse' : '')
+            .attr("fill-opacity", 0.3);
+
+        nodeGroup.append("circle")
+            .attr("r", 18)
+            .attr("fill", "#1E1B33")
+            .attr("stroke", d => d.id === rootId ? '#FFD700' : (d.analytics?.disputeStatus === 'Active' ? '#F44336' : '#8A63D2'))
+            .attr("stroke-width", 2);
+            
+        // --- ▼▼▼ PERBAIKAN UTAMA DI SINI ▼▼▼ ---
+        // Menggambar path SVG secara langsung, bukan menggunakan komponen React
+        nodeGroup.append("path")
+            .attr("d", d => {
+                switch (d.mediaType) {
+                    case 'IMAGE': return "M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z";
+                    case 'VIDEO': return "M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z";
+                    case 'AUDIO': return "M12 3v9.28c-.47-.17-.97-.28-1.5-.28C8.01 12 6 14.01 6 16.5S8.01 21 10.5 21c2.31 0 4.2-1.75 4.45-4H15V6h4V3h-7z";
+                    case 'TEXT': return "M2.5 4v3h5v12h3V7h5V4h-13zm19 5h-9v3h3v7h3v-7h3V9z";
+                    default: return "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z";
+                }
+            })
+            .attr("transform", "translate(-12, -12)") // Pusatkan ikon 24x24
+            .attr("fill", "#E0D5FF");
 
         nodeGroup.append("text")
-            .attr("font-size", 12).attr("fill", "#ccc")
-            .attr("x", d => radiusScale(d.analytics?.totalRoyaltiesClaimed || 0) + 5) 
-            .attr("y", 4).text(d => d.title.substring(0, 25) + (d.title.length > 25 ? '...' : '')); 
+            .attr("x", 26)
+            .attr("y", "0.31em")
+            .text(d => d.title.length > 20 ? d.title.substring(0, 18) + '...' : d.title)
+            .attr("fill", "#ccc")
+            .attr("font-size", "12px")
+            .attr("stroke", "#111")
+            .attr("stroke-width", 0.3)
+            .attr("paint-order", "stroke");
+
+        nodeGroup.on("mouseover", (event, d) => {
+            d3.select("#tooltip")
+                .style("opacity", 1)
+                .html(`
+                    <div class="font-bold text-purple-300">${d.title}</div>
+                    <div class="text-xs text-gray-400 font-mono">${d.id.substring(0, 16)}...</div>
+                    <div class="mt-2 text-xs">
+                        ${d.analytics?.disputeStatus === 'Active' ? '<div class="font-bold text-red-400">STATUS: IN DISPUTE</div>' : ''}
+                        <div>Type: ${d.mediaType}</div>
+                    </div>
+                `)
+                .style("left", `${event.pageX + 15}px`)
+                .style("top", `${event.pageY}px`);
+            
+            link.attr("stroke-opacity", l => (l.source === d || l.target === d) ? 1 : 0.2);
+            nodeGroup.attr("opacity", n => (n === d || links.some(l => (l.source === d && l.target === n) || (l.source === n && l.target === d))) ? 1 : 0.3);
+        }).on("mouseout", () => {
+            d3.select("#tooltip").style("opacity", 0);
+            link.attr("stroke-opacity", 0.6);
+            nodeGroup.attr("opacity", 1);
+        });
 
         simulation.on("tick", () => {
             link
-                .attr("x1", d => d.source.x).attr("y1", d => d.source.y)
-                .attr("x2", d => d.target.x).attr("y2", d => d.target.y);
+                .attr("x1", d => d.source.x)
+                .attr("y1", d => d.source.y)
+                .attr("x2", d => d.target.x)
+                .attr("y2", d => d.target.y);
 
-            nodeGroup.attr("transform", d => `translate(${d.x}, ${d.y})`);
-
-            particle.attr("transform", d => {
-                const royaltyRate = parseFloat(d.link.target.analytics?.royaltySplit) || 0;
-                const speed = 0.003 + (royaltyRate / 50000); 
-                d.progress = (d.progress + speed) % 1;
-                const x = d.link.source.x + (d.link.target.x - d.link.source.x) * d.progress;
-                const y = d.link.source.y + (d.link.target.y - d.link.source.y) * d.progress;
-                return `translate(${x},${y})`;
-            });
+            nodeGroup.attr("transform", d => `translate(${d.x},${d.y})`);
         });
         
-        function handleZoom(event) {
-            g.attr("transform", event.transform);
+        function drag(simulation) {
+            function dragstarted(event, d) {
+                if (!event.active) simulation.alphaTarget(0.3).restart();
+                d.fx = d.x;
+                d.fy = d.y;
+            }
+            function dragged(event, d) {
+                d.fx = event.x;
+                d.fy = event.y;
+            }
+            function dragended(event, d) {
+                if (!event.active) simulation.alphaTarget(0);
+                d.fx = null;
+                d.fy = null;
+            }
+            return d3.drag().on("start", dragstarted).on("drag", dragged).on("end", dragended);
         }
 
-        const zoom = d3.zoom()
-            .scaleExtent([0.1, 4])
-            .on("zoom", handleZoom);
-
-        svg.call(zoom);
+        svg.call(d3.zoom().extent([[0, 0], [width, height]]).scaleExtent([0.1, 8]).on("zoom", ({transform}) => {
+            g.attr("transform", transform);
+        }));
 
     }, [data, onNodeClick, onLinkClick, rootId]);
 
     return (
         <div ref={containerRef} className="w-full h-full relative" style={{ minHeight: '70vh' }}>
             <svg ref={svgRef} className="block"></svg>
-            <div id="tooltip" className="absolute opacity-0 bg-gray-900 border border-purple-500 text-xs text-white p-2 rounded pointer-events-none transition-opacity duration-150 shadow-xl"></div>
+            <div id="tooltip" className="absolute opacity-0 bg-gray-900 border border-purple-500 text-sm text-white p-3 rounded-lg pointer-events-none transition-opacity duration-200 shadow-2xl z-50"></div>
         </div>
     );
 };

@@ -11,7 +11,7 @@ const ASSETS_EDGES_URL = `${STORY_API_BASE_URL}/assets/edges`;
 
 const storyApiKey = process.env.STORY_PROTOCOL_API_KEY;
 const storyApiHeaders = { 'X-Api-Key': storyApiKey, 'Content-Type': 'application/json' };
-const MAX_TREE_DEPTH = 3;
+const MAX_TREE_DEPTH = 10;
 
 const storyScanApi = axios.create({
     baseURL: STORYSCAN_API_BASE_URL,
@@ -175,28 +175,82 @@ const getRoyaltyTransactions = async (ipId) => {
         });
 };
 const getTopLicensees = async (ipId) => {
-    const transactions = await getRoyaltyTransactions(ipId);
+    // Langkah 1: Dapatkan semua event dari API Story Protocol yang andal
+    let allEvents = [];
+    let hasMore = true;
+    let offset = 0;
+    const limit = 200;
+
+    while (hasMore) {
+        const body = {
+            where: { ipIds: [ipId], eventTypes: ["RoyaltyPaid"] },
+            pagination: { limit, offset }
+        };
+        const response = await axios.post(TRANSACTIONS_URL, body, { headers: storyApiHeaders });
+        const fetched = response.data.data || [];
+        if (fetched.length > 0) allEvents.push(...fetched);
+        hasMore = response.data.pagination?.hasMore || false;
+        offset += limit;
+    }
     
-    const licenseeMap = new Map();
-    transactions.forEach(tx => {
-        const data = licenseeMap.get(tx.from) || { count: 0, totalValue: 0, currency: '' };
+    if (allEvents.length === 0) {
+        return [];
+    }
+
+    // Langkah 2: Agregasi data yang andal (initiator/from address dan txHashes)
+    const licenseeData = new Map();
+    allEvents.forEach(event => {
+        const data = licenseeData.get(event.initiator) || { count: 0, txHashes: [] };
         data.count++;
-        const value = parseFloat(tx.value) || 0;
-        data.totalValue += value;
-        data.currency = tx.value.split(' ')[1] || 'N/A';
-        licenseeMap.set(tx.from, data);
+        data.txHashes.push(event.txHash);
+        licenseeData.set(event.initiator, data);
     });
 
-    return Array.from(licenseeMap.entries())
-        .map(([address, data]) => ({
-            address,
-            ...data,
-            totalValue: `${data.totalValue.toFixed(4)} ${data.currency}`,
-        }))
-        .sort((a, b) => b.count - a.count)
-        .slice(0, 5); // Ambil 5 teratas
-};
+    // Langkah 3: Urutkan berdasarkan 'count' untuk mendapatkan 5 teratas yang stabil
+    const sortedLicensees = Array.from(licenseeData.entries())
+        .sort((a, b) => b[1].count - a[1].count)
+        .slice(0, 5);
 
+    // Langkah 4: Lakukan 'enrichment' (panggil StoryScan) HANYA untuk 5 teratas
+    const enrichedLicenseesPromises = sortedLicensees.map(async ([address, data]) => {
+        const txDetailPromises = data.txHashes.map(hash => 
+            storyScanApi.get(`/transactions/${hash}`).catch(() => null)
+        );
+        const txDetailsResponses = await Promise.all(txDetailPromises);
+
+        const totalsByToken = {};
+        txDetailsResponses.forEach(res => {
+            if (!res || !res.data) return;
+            const txData = res.data;
+            if (txData && txData.token_transfers && txData.token_transfers.length > 0) {
+                const royaltyTransfer = txData.token_transfers[0];
+                if (royaltyTransfer && royaltyTransfer.total && royaltyTransfer.total.value) {
+                    const currency = royaltyTransfer.token.symbol;
+                    const decimals = parseInt(royaltyTransfer.token.decimals, 10);
+                    const value = BigInt(royaltyTransfer.total.value);
+
+                    if (!totalsByToken[currency]) {
+                        totalsByToken[currency] = { total: BigInt(0), decimals };
+                    }
+                    totalsByToken[currency].total += value;
+                }
+            }
+        });
+        
+        // Format nilai total menjadi string
+        const displayValues = Object.entries(totalsByToken).map(([currency, tokenData]) => 
+            `${parseFloat(formatUnits(tokenData.total, tokenData.decimals)).toFixed(4)} ${currency}`
+        ).join(', ');
+
+        return {
+            address,
+            count: data.count,
+            totalValue: displayValues || "N/A",
+        };
+    });
+
+    return Promise.all(enrichedLicenseesPromises);
+};
 const getDisputeStatus = async (ipId) => {
     const body = {
         where: { 

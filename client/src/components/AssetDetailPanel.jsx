@@ -15,7 +15,7 @@ const AssetDetailPanel = ({ asset, onClose }) => {
         return null;
     }
 
-    const formattedDate = asset.createdAt ? new Date(asset.createdAt).toLocaleDateString('id-ID', {
+    const formattedDate = asset.createdAt ? new Date(asset.createdAt).toLocaleDateString('en-US', {
         year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit'
     }) : 'N/A';
 
@@ -80,12 +80,12 @@ const AssetDetailPanel = ({ asset, onClose }) => {
                 {/* Tombol Aksi Utama di Bawah */}
                 <div className="mt-8 pt-6 border-t border-purple-900/50 flex-shrink-0">
                     <a 
-                        href={`https://explorer.storyprotocol.xyz/ip-assets/${asset.ipId}`} 
+                        href={`https://portal.story.foundation/user/${asset.ipId}`} 
                         target="_blank" 
                         rel="noopener noreferrer"
                         className="w-full inline-flex items-center justify-center p-3 font-bold bg-gradient-to-r from-purple-600 to-blue-600 rounded-xl hover:from-purple-700 hover:to-blue-700 transition-colors text-white shadow-lg text-base"
                     >
-                        View on Explorer
+                        View on Portal
                     </a>
                 </div>
             </div>

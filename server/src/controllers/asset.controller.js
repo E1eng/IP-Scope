@@ -64,13 +64,14 @@ const getOnChainAnalyticsController = async (req, res) => {
     }
 };
 
-// ▼▼▼ CONTROLLER BARU UNTUK VALUE FLOW ▼▼▼
+// CONTROLLER BARU UNTUK VALUE FLOW
 const getAssetValueFlowGraph = async (req, res) => {
   const { id } = req.params;
   if (!id) {
     return res.status(400).json({ message: 'Asset ID is required' });
   }
   try {
+    // Memanggil service yang kini mengambil data on-chain
     const graphData = await storyProtocolService.getValueFlowData(id);
     res.status(200).json(graphData);
   } catch (error) {
@@ -79,8 +80,6 @@ const getAssetValueFlowGraph = async (req, res) => {
   }
 };
 
-
-// Pastikan semua fungsi diekspor dari satu tempat
 module.exports = {
   searchAssets,
   getAssetDetail,

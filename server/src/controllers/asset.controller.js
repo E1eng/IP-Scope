@@ -33,7 +33,7 @@ const getAssetDetail = async (req, res) => {
     }
 };
 
-// GET REMIX TREE
+// GET REMIX TREE (UNTUK GRAFIK DASAR)
 const getAssetRemixTree = async (req, res) => {
   const { id } = req.params;
   if (!id) {
@@ -64,11 +64,27 @@ const getOnChainAnalyticsController = async (req, res) => {
     }
 };
 
+// ▼▼▼ CONTROLLER BARU UNTUK VALUE FLOW ▼▼▼
+const getAssetValueFlowGraph = async (req, res) => {
+  const { id } = req.params;
+  if (!id) {
+    return res.status(400).json({ message: 'Asset ID is required' });
+  }
+  try {
+    const graphData = await storyProtocolService.getValueFlowData(id);
+    res.status(200).json(graphData);
+  } catch (error) {
+    console.error('Error in value flow graph controller:', error.message);
+    res.status(500).json({ message: `Failed to fetch value flow graph: ${error.message}` });
+  }
+};
 
 
+// Pastikan semua fungsi diekspor dari satu tempat
 module.exports = {
   searchAssets,
   getAssetDetail,
   getAssetRemixTree,
   getOnChainAnalyticsController,
+  getAssetValueFlowGraph,
 };

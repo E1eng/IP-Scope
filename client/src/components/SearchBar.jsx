@@ -5,8 +5,6 @@ const MEDIA_TYPES = [
   { value: 'image', display: 'IMAGE' },
   { value: 'video', display: 'VIDEO' },
   { value: 'audio', display: 'AUDIO' },
-  { value: 'text', display: 'TEXT' }, 
-  { value: 'collection', display: 'COLLECTION' },
 ];
 
 const SORT_OPTIONS = [

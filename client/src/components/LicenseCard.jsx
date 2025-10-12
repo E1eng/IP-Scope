@@ -9,11 +9,8 @@ const StatPill = ({ label, value, colorClass }) => (
 const LicenseCard = ({ asset }) => {
   const { pilTerms, royaltyPolicy } = asset;
   
-  // ▼▼▼ PERBAIKAN KRITIS BUG LISENSI: Cek apakah properti kunci lisensi ada (bukan undefined), terlepas dari nilainya (true/false/0) ▼▼▼
   const hasPilTerms = pilTerms && pilTerms.commercialUse !== undefined;
-  // Cek apakah properti rate ada, bahkan jika rate-nya 0
   const hasRoyaltyPolicy = royaltyPolicy && royaltyPolicy.rate !== undefined;
-
 
   if (!hasPilTerms && !hasRoyaltyPolicy) {
     return (
@@ -54,7 +51,7 @@ const LicenseCard = ({ asset }) => {
       {/* PIL Terms Section */}
       {hasPilTerms && (
         <div>
-          <p className="text-sm font-light text-gray-300 mb-2">Public IP License (PIL) Terms</p>
+          <p className="text-sm font-light text-gray-300 mb-2">PIL Terms</p>
           <div className="flex flex-wrap gap-3">
             <StatPill label="Usage" value={termName} colorClass={termColor} />
             <StatPill label="Transferable" value={pilTerms.transferable ? 'YES' : 'NO'} colorClass={transferColor} />

@@ -1,7 +1,8 @@
 const axios = require('axios');
 const { client } = require('../utils/storyClient'); // Impor klien SDK
-const { parseEther } = require("viem");
-const { DisputeTargetTag } = require("@story-protocol/core-sdk");
+// ▼▼▼ IMPOR BARU UNTUK FUNGSI ON-CHAIN ▼▼▼
+const { WIP_TOKEN_ADDRESS } = require("@story-protocol/core-sdk");
+const { formatEther } = require("viem");
 
 // ... (kode BASE_URL, apiKey, apiHeaders, checkApiKey, normalizeAssetData, getIpAsset tidak berubah) ...
 const BASE_URL = 'https://api.storyapis.com/api/v4';
@@ -198,19 +199,114 @@ const getInfringementScore = async (ipId) => {
 };
 
 const getOnChainAnalytics = async (ipId) => {
-    await new Promise(resolve => setTimeout(resolve, 300)); 
-    const hashValue = ipId.charCodeAt(ipId.length - 2) + ipId.charCodeAt(ipId.length - 1);
-    let disputeStatus = "None";
-    if (hashValue % 10 === 0) disputeStatus = "Active Dispute (Claim #123)";
-    if (hashValue % 7 === 0) disputeStatus = "Closed - No Violation";
-    const royaltySplit = ((hashValue % 20) + 1).toFixed(2);
-    const claimed = (hashValue * 10).toLocaleString();
-    return {
-        licenseTermsId: "0xT" + ipId.substring(2, 10),
-        royaltySplit: `${royaltySplit}%`,
-        disputeStatus: disputeStatus,
-        totalRoyaltiesClaimed: `${claimed} ETH`,
+    // PERIKSA APAKAH SDK SIAP. Jika tidak, WALLET_PRIVATE_KEY mungkin hilang.
+    if (!client) {
+        console.warn("SDK client not initialized. Falling back to simulated analytics data.");
+        // Jalankan logika simulasi lama sebagai fallback
+        const hashValue = ipId.charCodeAt(ipId.length - 2) + ipId.charCodeAt(ipId.length - 1);
+        return {
+            licenseTermsId: `SIMULATED: 0xT...${ipId.substring(8, 12)}`,
+            royaltySplit: `${((hashValue % 20) + 1).toFixed(2)}%`,
+            totalRoyaltiesClaimed: `${(hashValue * 10).toLocaleString()} ETH`,
+            disputeStatus: (hashValue % 10 === 0) ? "Active (Simulated)" : "None (Simulated)",
+        };
+    }
+
+    try {
+        // 1. Ambil data aset lengkap untuk mendapatkan info lisensi/royalti
+        const assetDetails = await getIpAsset(ipId);
+        const royaltyPolicy = assetDetails?.royaltyPolicy;
+
+        // 2. Ambil PENDAPATAN YANG BISA DIKLAIM (CLAIMABLE REVENUE) secara on-chain
+        const claimableRevResponse = await client.royalty.claimableRevenue({
+            ipId: ipId,
+            claimer: ipId, // Umumnya, IP asset itu sendiri yang menjadi claimer
+            token: WIP_TOKEN_ADDRESS, // Menggunakan token default dari SDK
+        });
+
+        // 3. Format data dari blockchain (BigInt) menjadi string yang bisa dibaca
+        const totalRoyaltiesClaimed = `${formatEther(claimableRevResponse.claimableRevenue)} WIP`;
+        
+        // 4. Hitung persentase royalti dari data yang sudah kita punya
+        const royaltyRate = royaltyPolicy?.rate ? (royaltyPolicy.rate / 10000).toFixed(2) : '0.00';
+        const royaltySplit = `${royaltyRate}%`;
+
+        // 5. Dispute Status masih simulasi karena dokumentasi yang diberikan hanya untuk Royalty
+        const disputeStatus = "None (Real data pending)";
+
+        return {
+            licenseTermsId: royaltyPolicy?.address || `Policy for ${ipId.substring(0, 8)}...`,
+            royaltySplit: royaltySplit,
+            totalRoyaltiesClaimed: totalRoyaltiesClaimed,
+            disputeStatus: disputeStatus,
+        };
+
+    } catch (error) {
+        console.error(`Error fetching REAL on-chain analytics for ${ipId}:`, error.message);
+        // Jika panggilan SDK gagal, kembalikan pesan error yang jelas
+        return {
+            licenseTermsId: "Error",
+            royaltySplit: "Error",
+            totalRoyaltiesClaimed: "Failed to fetch",
+            disputeStatus: "Error",
+            errorMessage: "Could not retrieve on-chain data. Ensure WALLET_PRIVATE_KEY and RPC_PROVIDER_URL are set correctly in server/.env."
+        };
+    }
+};
+
+const getValueFlowData = async (startAssetId) => {
+    // 1. Dapatkan struktur pohon dasar
+    const tree = await buildRemixTree(startAssetId);
+    if (!tree) throw new Error("Could not build the initial asset tree.");
+
+    const allNodes = new Map();
+    const tasks = [];
+
+    // Fungsi untuk melintasi pohon dan mengumpulkan semua node unik
+    const traverseAndCollect = (node) => {
+        if (!node || !node.ipId || allNodes.has(node.ipId)) return;
+        allNodes.set(node.ipId, { ...node, children: undefined }); // Simpan data node, hapus children untuk flat structure
+        if (node.children) {
+            node.children.forEach(traverseAndCollect);
+        }
     };
+    
+    traverseAndCollect(tree);
+
+    // 2. Buat array promise untuk mengambil analitik setiap node
+    allNodes.forEach((node, ipId) => {
+        tasks.push(
+            getOnChainAnalytics(ipId).then(analytics => {
+                const currentNode = allNodes.get(ipId);
+                // Konversi nilai royalti menjadi angka untuk kemudahan visualisasi
+                const totalRoyaltiesClaimed = parseFloat(analytics.totalRoyaltiesClaimed.replace(/,/g, '')) || 0;
+                currentNode.analytics = { ...analytics, totalRoyaltiesClaimed };
+            }).catch(e => {
+                // Jika gagal, berikan nilai default
+                const currentNode = allNodes.get(ipId);
+                currentNode.analytics = { totalRoyaltiesClaimed: 0, royaltySplit: "0%", disputeStatus: "Error" };
+            })
+        );
+    });
+
+    // 3. Jalankan semua promise secara paralel
+    await Promise.all(tasks);
+
+    // 4. Kembalikan struktur pohon asli, tetapi sekarang setiap node memiliki data `analytics`
+    const enrichTreeWithAnalytics = (node) => {
+        if (!node || !node.ipId) return null;
+        const analyticsData = allNodes.get(node.ipId)?.analytics;
+        const children = node.children ? node.children.map(enrichTreeWithAnalytics).filter(Boolean) : [];
+        return {
+            ...node,
+            analytics: analyticsData,
+            children: children
+        };
+    };
+    
+    const enrichedTree = enrichTreeWithAnalytics(tree);
+
+    return enrichedTree;
 };
 
 module.exports = {
@@ -219,4 +315,5 @@ module.exports = {
   getIpAsset,
   getInfringementScore,
   getOnChainAnalytics,
+  getValueFlowData,
 };

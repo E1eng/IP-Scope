@@ -13,95 +13,24 @@ function IPGraphPage() {
   
   const [selectedChildAsset, setSelectedChildAsset] = useState(null);
   const [isChildLoading, setIsChildLoading] = useState(false);
-  // ▼▼▼ STATE BARU UNTUK DATA ANALITIK ON-CHAIN ▼▼▼
   const [analyticsData, setAnalyticsData] = useState(null); 
-  const [selectedType, setSelectedType] = useState('node'); // 'node' atau 'link'
+  const [selectedType, setSelectedType] = useState('node');
 
-  // ... (handleFetchGraph dan transformTreeToGraph tetap sama)
-
-  const handleFetchGraph = async (e) => {
-    e.preventDefault();
-    if (!assetId.trim()) return;
-
-    setIsLoading(true);
-    setGraphData(null);
-    setError(null);
-    setSelectedChildAsset(null);
-    setAnalyticsData(null); // Reset analytics
-
-    try {
-      const response = await axios.get(
-        `${API_BASE_URL}/assets/${assetId.trim()}/remix-tree`
-      );
-      
-      const { nodes, links } = transformTreeToGraph(response.data);
-      setGraphData({ nodes, links });
-
-    } catch (err) {
-      setError(
-        err.response?.data?.message || 'Failed to load IP Graph. Check backend connection or API Key.'
-      );
-      console.error('IP Graph Fetch Error:', err.response ? err.response.data : err.message);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-
-  const handleGraphInteraction = async (id, type) => {
-      setSelectedChildAsset(null);
-      setAnalyticsData(null);
-      setIsChildLoading(true);
-      setSelectedType(type);
-
-      try {
-          // 1. Ambil detail aset (umum)
-          const assetResponse = await axios.get(`${API_BASE_URL}/assets/${id}`);
-          const assetDetails = assetResponse.data;
-          
-          // 2. Ambil data on-chain (analitik)
-          const analyticsResponse = await axios.get(`${API_BASE_URL}/assets/${id}/analytics`);
-          
-          // Gabungkan data
-          setSelectedChildAsset(assetDetails);
-          setAnalyticsData(analyticsResponse.data);
-          
-      } catch (err) {
-          console.error(`Failed to fetch ${type} details:`, err.response ? err.response.data : err.message);
-          setSelectedChildAsset({ 
-            ipId: id, 
-            title: `Error fetching ${type} details`, 
-            description: "Failed to load full data for this component.", 
-            isError: true 
-          });
-      } finally {
-          setIsChildLoading(false);
-      }
-  };
-
-
-  // Gabungkan handler node dan link menjadi satu
-  const handleNodeClick = (ipId) => handleGraphInteraction(ipId, 'node');
-  const handleLinkClick = (ipId) => handleGraphInteraction(ipId, 'link'); // Link menggunakan ID target (anak)
-
-  // ... (transformTreeToGraph tetap sama)
-
-  // Fungsi utilitas untuk mengubah format Tree (nested object) menjadi format Graph (flat arrays of nodes and links)
+  // ▼▼▼ FUNGSI INI DIPERBARUI UNTUK MENERUSKAN DATA ANALYTICS ▼▼▼
   const transformTreeToGraph = (root) => {
     const nodes = [];
     const links = [];
     const nodeMap = new Map();
 
     const traverse = (node, parentId = null) => {
-      // Mencegah duplikasi node
-      if (nodeMap.has(node.ipId)) return;
+      if (!node || !node.ipId || nodeMap.has(node.ipId)) return;
 
       const d3Node = {
         id: node.ipId,
         title: node.title,
         mediaType: node.mediaType,
         isRoot: node.ipId === assetId.trim(),
-        // Simpan data lain yang mungkin berguna
+        analytics: node.analytics, // <-- BUG KRITIS DIPERBAIKI DI SINI
       };
 
       nodes.push(d3Node);
@@ -117,16 +46,75 @@ function IPGraphPage() {
     };
     
     traverse(root);
-
     return { nodes, links };
   };
 
+  const handleFetchGraph = async (e) => {
+    e.preventDefault();
+    if (!assetId.trim()) return;
+
+    setIsLoading(true);
+    setGraphData(null);
+    setError(null);
+    setSelectedChildAsset(null);
+    setAnalyticsData(null);
+
+    try {
+      const response = await axios.get(
+        `${API_BASE_URL}/graphs/${assetId.trim()}/value-flow`
+      );
+      
+      if (response.data) {
+        const { nodes, links } = transformTreeToGraph(response.data);
+        setGraphData({ nodes, links });
+      } else {
+        throw new Error("API returned no data");
+      }
+
+    } catch (err) {
+      setError(
+        err.response?.data?.message || 'Failed to load IP Graph. Check backend connection or API Key.'
+      );
+      console.error('IP Graph Fetch Error:', err.response ? err.response.data : err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleGraphInteraction = async (id, type) => {
+      setSelectedChildAsset(null);
+      setAnalyticsData(null);
+      setIsChildLoading(true);
+      setSelectedType(type);
+
+      try {
+          const assetResponse = await axios.get(`${API_BASE_URL}/assets/${id}`);
+          const analyticsResponse = await axios.get(`${API_BASE_URL}/assets/${id}/analytics`);
+          
+          setSelectedChildAsset(assetResponse.data);
+          setAnalyticsData(analyticsResponse.data);
+          
+      } catch (err) {
+          console.error(`Failed to fetch ${type} details:`, err.response ? err.response.data : err.message);
+          setSelectedChildAsset({ 
+            ipId: id, 
+            title: `Error fetching ${type} details`, 
+            description: "Failed to load full data for this component.", 
+            isError: true 
+          });
+      } finally {
+          setIsChildLoading(false);
+      }
+  };
+
+  const handleNodeClick = (ipId) => handleGraphInteraction(ipId, 'node');
+  const handleLinkClick = (ipId) => handleGraphInteraction(ipId, 'link');
 
   return (
     <div className="space-y-10 animate-fade-in">
       <div className="sticky top-0 z-30 bg-gradient-to-r from-purple-900/40 via-gray-900/80 to-blue-900/40 p-6 rounded-2xl border border-purple-900 shadow-xl mb-8">
         <h2 className="text-3xl font-extrabold text-purple-300 tracking-tight mb-2">IP Graph Visualization</h2>
-        <p className='text-blue-400'>Input an IP ID to visualize its entire remix provenance as an interactive force-directed graph.</p>
+        <p className='text-blue-400'>Input an IP ID to visualize its entire remix provenance and value flow as an interactive graph.</p>
       </div>
       <form onSubmit={handleFetchGraph} className="flex flex-col sm:flex-row gap-6 mb-8">
         <input
@@ -145,7 +133,6 @@ function IPGraphPage() {
           {isLoading ? 'Loading Graph...' : 'Generate Graph'}
         </button>
       </form>
-      {/* Tampilan Visualisasi D3 */}
       <div className="bg-gradient-to-br from-gray-950 via-gray-900 to-gray-800 border border-purple-900 rounded-2xl shadow-2xl overflow-hidden min-h-[70vh]">
         {isLoading && (
           <div className="flex items-center justify-center p-12 text-purple-400">Loading graph data...</div>
@@ -167,7 +154,6 @@ function IPGraphPage() {
           </div>
         )}
       </div>
-      {/* Modal Detail untuk node yang diklik */}
       {selectedChildAsset && !isChildLoading && (
         <RemixDetailModal
           asset={selectedChildAsset}

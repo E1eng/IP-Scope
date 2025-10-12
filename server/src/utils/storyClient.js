@@ -1,10 +1,8 @@
 const { StoryClient } = require("@story-protocol/core-sdk");
 const { http } = require("viem");
 const { privateKeyToAccount } = require("viem/accounts");
-// Hapus impor networks.js
-// const { storyMainnet } = require("./networks"); 
 
-// Validasi environment variables
+// Validasi environment variables yang KRITIS untuk on-chain
 if (!process.env.WALLET_PRIVATE_KEY || !process.env.RPC_PROVIDER_URL) {
   console.error("FATAL: WALLET_PRIVATE_KEY or RPC_PROVIDER_URL is not set in the .env file.");
 }
@@ -27,12 +25,11 @@ try {
     account = undefined; 
 }
 
-
 // Konfigurasi untuk Story Protocol
 const config = {
   account: account,
   transport: http(process.env.RPC_PROVIDER_URL),
-  // FIX: Menggunakan string identifier "mainnet" yang benar
+  // FIX: Menggunakan string identifier "sepolia" untuk testnet. Ganti ke "mainnet" jika perlu.
   chainId: "mainnet", 
 };
 
@@ -40,7 +37,7 @@ const config = {
 const client = account ? StoryClient.newClient(config) : null;
 
 if (!client) {
-    console.warn("Warning: Story SDK client could not be initialized. On-chain analytics will fail. Check RPC URL and Private Key.");
+    console.warn("Warning: Story SDK client could not be initialized. On-chain analytics will fail. Check RPC_PROVIDER_URL and WALLET_PRIVATE_KEY.");
 }
 
 module.exports = { client, account };

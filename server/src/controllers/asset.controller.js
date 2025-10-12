@@ -1,6 +1,6 @@
 const storyProtocolService = require('../services/storyProtocol.service');
 
-// SEARCH ASSETS
+// ... (searchAssets, getAssetDetail, dll. tetap sama) ...
 const searchAssets = async (req, res) => {
   const { query, mediaType, sortBy, limit, offset } = req.query;
   if (!query) {
@@ -18,7 +18,6 @@ const searchAssets = async (req, res) => {
   }
 };
 
-// GET ASSET DETAILS
 const getAssetDetail = async (req, res) => {
     const { id } = req.params;
     if (!id) {
@@ -33,7 +32,6 @@ const getAssetDetail = async (req, res) => {
     }
 };
 
-// GET REMIX TREE (UNTUK GRAFIK DASAR)
 const getAssetRemixTree = async (req, res) => {
   const { id } = req.params;
   if (!id) {
@@ -49,7 +47,6 @@ const getAssetRemixTree = async (req, res) => {
   }
 };
 
-// GET ON-CHAIN ANALYTICS
 const getOnChainAnalyticsController = async (req, res) => {
     const { id } = req.params;
     if (!id) {
@@ -64,20 +61,43 @@ const getOnChainAnalyticsController = async (req, res) => {
     }
 };
 
-// CONTROLLER BARU UNTUK VALUE FLOW
 const getAssetValueFlowGraph = async (req, res) => {
   const { id } = req.params;
   if (!id) {
     return res.status(400).json({ message: 'Asset ID is required' });
   }
   try {
-    // Memanggil service yang kini mengambil data on-chain
     const graphData = await storyProtocolService.getValueFlowData(id);
     res.status(200).json(graphData);
   } catch (error) {
     console.error('Error in value flow graph controller:', error.message);
     res.status(500).json({ message: `Failed to fetch value flow graph: ${error.message}` });
   }
+};
+// --- CONTROLLER BARU ---
+
+const getRoyaltyTransactionsController = async (req, res) => {
+    const { id } = req.params;
+    if (!id) return res.status(400).json({ message: 'Asset ID is required' });
+    try {
+        const transactions = await storyProtocolService.getRoyaltyTransactions(id);
+        res.status(200).json(transactions);
+    } catch (error) {
+        console.error('Error in royalty transactions controller:', error.message);
+        res.status(500).json({ message: `Failed to fetch royalty transactions: ${error.message}` });
+    }
+};
+
+const getTopLicenseesController = async (req, res) => {
+    const { id } = req.params;
+    if (!id) return res.status(400).json({ message: 'Asset ID is required' });
+    try {
+        const licensees = await storyProtocolService.getTopLicensees(id);
+        res.status(200).json(licensees);
+    } catch (error) {
+        console.error('Error in top licensees controller:', error.message);
+        res.status(500).json({ message: `Failed to fetch top licensees: ${error.message}` });
+    }
 };
 
 module.exports = {
@@ -86,4 +106,6 @@ module.exports = {
   getAssetRemixTree,
   getOnChainAnalyticsController,
   getAssetValueFlowGraph,
+  getRoyaltyTransactionsController,
+  getTopLicenseesController,
 };

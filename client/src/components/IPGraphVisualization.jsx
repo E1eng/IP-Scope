@@ -26,7 +26,6 @@ const IPGraphVisualization = ({ data, onNodeClick, onLinkClick, rootId }) => {
 
         const g = svg.append("g");
 
-        // --- SKALA VISUAL BARU ---
         const maxRoyalties = d3.max(nodes, d => d.analytics?.totalRoyaltiesClaimed) || 1;
         const radiusScale = d3.scaleSqrt()
             .domain([0, maxRoyalties])
@@ -36,9 +35,13 @@ const IPGraphVisualization = ({ data, onNodeClick, onLinkClick, rootId }) => {
             'IMAGE': '#4CAF50', 'VIDEO': '#2196F3', 'AUDIO': '#FF9800', 
             'TEXT': '#9C27B0', 'COLLECTION': '#E91E63', 'UNKNOWN': '#607D8B', 'ERROR': '#F44336'
         };
-        const getNodeColor = (d) => d.id === rootId ? '#FFD700' : colorMap[d.mediaType] || colorMap['UNKNOWN'];
+        // --- FUNGSI WARNA DIPERBARUI UNTUK STATUS SENGKETA ---
+        const getNodeColor = (d) => {
+            if (d.analytics?.disputeStatus === 'Active') return '#F44336'; // Merah untuk sengketa
+            if (d.id === rootId) return '#FFD700'; // Emas untuk root
+            return colorMap[d.mediaType] || colorMap['UNKNOWN'];
+        };
         
-        // --- Drag Function Definition (DIPINDAHKAN KE SINI UNTUK MENGATASI ReferenceError) ---
         function drag(simulation) {
             function dragstarted(event) {
                 if (!event.active) simulation.alphaTarget(0.3).restart();
@@ -57,7 +60,6 @@ const IPGraphVisualization = ({ data, onNodeClick, onLinkClick, rootId }) => {
             return d3.drag().on("start", dragstarted).on("drag", dragged).on("end", dragended);
         }
         
-        // Definisi Arrow Marker (tetap sama)
         svg.append("defs").selectAll("marker")
             .data(["arrow"])
             .join("marker")
@@ -72,13 +74,11 @@ const IPGraphVisualization = ({ data, onNodeClick, onLinkClick, rootId }) => {
             .attr("fill", "#666")
             .attr("d", "M0,-5L10,0L0,5");
 
-        // Inisialisasi Force Simulation
         const simulation = d3.forceSimulation(nodes)
             .force("link", d3.forceLink(links).id(d => d.id).distance(180)) 
             .force("charge", d3.forceManyBody().strength(-800)) 
             .force("center", d3.forceCenter(width / 2, height / 2));
 
-        // Buat Links
         const link = g.append("g")
             .attr("stroke", "#4A4A4A").attr("stroke-opacity", 0.6)
             .selectAll("line").data(links).join("line")
@@ -87,7 +87,6 @@ const IPGraphVisualization = ({ data, onNodeClick, onLinkClick, rootId }) => {
             .on("click", (event, d) => onLinkClick(d.target.id)) 
             .attr("cursor", "pointer");
 
-        // --- ANIMASI PARTIKEL PADA LINK (ALIRAN NILAI) ---
         const particles = [];
         links.forEach(link => {
             const targetNode = nodes.find(n => n.id === link.target.id);
@@ -102,10 +101,9 @@ const IPGraphVisualization = ({ data, onNodeClick, onLinkClick, rootId }) => {
             .selectAll(".particle").data(particles).enter()
             .append("circle").attr("r", 2).attr("fill", "#00f5d4"); 
 
-        // Grup Node (lingkaran dan teks)
         const nodeGroup = g.append("g").selectAll("g").data(nodes).join("g")
             .attr("class", "node-group transition-all duration-300 ease-in-out")
-            .call(drag(simulation)) // drag kini terdefinisi
+            .call(drag(simulation))
             .on("click", (event, d) => onNodeClick(d.id))
             .on("mouseover", function(event, d) {
                 
@@ -114,7 +112,6 @@ const IPGraphVisualization = ({ data, onNodeClick, onLinkClick, rootId }) => {
                 
                 d3.selectAll('.node-group').attr('opacity', n => (d.id === n.id || links.some(l => (l.source.id === d.id && l.target.id === n.id) || (l.target.id === d.id && l.source.id === n.id))) ? 1.0 : 0.3);
 
-                // Tampilkan Tooltip yang diperkaya data Real On-Chain
                 d3.select("#tooltip")
                     .style("opacity", 1)
                     .html(`
@@ -122,36 +119,33 @@ const IPGraphVisualization = ({ data, onNodeClick, onLinkClick, rootId }) => {
                         Type: ${d.mediaType}<br/>
                         ID: ${d.id.substring(0, 12)}...<br/>
                         Total Royalties: <strong>${d.analytics?.totalRoyaltiesClaimed?.toLocaleString() || 'N/A'}</strong>
+                        ${d.analytics?.disputeStatus === 'Active' ? '<br/><strong style="color: #F44336;">IN DISPUTE</strong>' : ''}
                     `)
                     .style("left", (event.pageX + 15) + "px")
                     .style("top", (event.pageY - 15) + "px");
             })
             .on("mouseout", function() {
-                // Kembalikan ukuran dan warna node
                 d3.select(this).select('circle').attr("r", d => radiusScale(d.analytics?.totalRoyaltiesClaimed || 0)); 
                 d3.select(this).select('text').attr('font-weight', 'normal').attr('fill', '#ccc');
                 
-                // Hapus Highlight
                 link.attr('stroke-opacity', 0.6).attr('stroke', '#4A4A4A');
                 d3.selectAll('.node-group').attr('opacity', 1.0);
                 d3.select("#tooltip").style("opacity", 0);
             });
 
-        // Lingkaran Node dengan ukuran dinamis (berdasarkan total royalti)
+        // --- STROKE DIPERBARUI UNTUK STATUS SENGKETA ---
         nodeGroup.append("circle")
             .attr("r", d => radiusScale(d.analytics?.totalRoyaltiesClaimed || 0))
             .attr("fill", getNodeColor)
-            .attr("stroke", d => d.id === rootId ? '#FFF' : '#eee')
-            .attr("stroke-width", d => d.id === rootId ? 3 : 2)
+            .attr("stroke", d => d.analytics?.disputeStatus === 'Active' ? '#F44336' : (d.id === rootId ? '#FFF' : '#eee'))
+            .attr("stroke-width", d => d.analytics?.disputeStatus === 'Active' ? 4 : (d.id === rootId ? 3 : 2))
             .attr("cursor", "pointer");
 
-        // Label Node
         nodeGroup.append("text")
             .attr("font-size", 12).attr("fill", "#ccc")
             .attr("x", d => radiusScale(d.analytics?.totalRoyaltiesClaimed || 0) + 5) 
             .attr("y", 4).text(d => d.title.substring(0, 25) + (d.title.length > 25 ? '...' : '')); 
 
-        // Perbarui posisi pada setiap tick simulasi
         simulation.on("tick", () => {
             link
                 .attr("x1", d => d.source.x).attr("y1", d => d.source.y)
@@ -159,7 +153,6 @@ const IPGraphVisualization = ({ data, onNodeClick, onLinkClick, rootId }) => {
 
             nodeGroup.attr("transform", d => `translate(${d.x}, ${d.y})`);
 
-            // Update posisi partikel animasi
             particle.attr("transform", d => {
                 const royaltyRate = parseFloat(d.link.target.analytics?.royaltySplit) || 0;
                 const speed = 0.003 + (royaltyRate / 50000); 

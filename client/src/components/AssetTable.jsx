@@ -1,6 +1,49 @@
-import React from 'react';
+import React, { useState } from 'react';
 
-// --- Komponen Utama: AssetTable ---
+// --- Sub-Komponen: WalletFilterForm (Simplified) ---
+const WalletFilterForm = ({ onFetch, initialOwnerAddress, isSubmitting }) => {
+    // Hanya satu state untuk alamat input
+    const [addressInput, setAddressInput] = useState(initialOwnerAddress || ''); 
+
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        const cleanedAddress = addressInput.trim();
+
+        if (!cleanedAddress) return;
+
+        // onFetch akan mengatur global loading state di ExplorerPage
+        onFetch(cleanedAddress); 
+    };
+
+    const inputClasses = "flex-grow p-3 bg-gray-900 border border-purple-800 rounded-lg focus:ring-2 focus:ring-purple-500 text-white placeholder:text-gray-500";
+    const buttonClasses = "p-3 px-6 font-bold text-white bg-purple-600 rounded-lg hover:bg-purple-700 transition-colors disabled:bg-gray-700";
+
+    return (
+        <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Input Tunggal */}
+            <div className="flex flex-col md:flex-row gap-3">
+                <input
+                    type="text"
+                    value={addressInput}
+                    onChange={(e) => setAddressInput(e.target.value)}
+                    placeholder="Masukkan Alamat Wallet atau Token Contract"
+                    className={inputClasses}
+                    required
+                    disabled={isSubmitting} // Disable input saat loading
+                />
+                <button
+                    type="submit"
+                    disabled={isSubmitting || !addressInput.trim()} // Menggunakan isSubmitting
+                    className={buttonClasses}
+                >
+                    {isSubmitting ? 'Loading...' : 'Load Assets'}
+                </button>
+            </div>
+        </form>
+    );
+};
+
+// --- Komponen Utama: AssetTable (Sisanya tetap sama) ---
 function AssetTable({ assets, isLoading, error, onAssetClick }) {
     if (isLoading) {
         return (
@@ -56,5 +99,6 @@ function AssetTable({ assets, isLoading, error, onAssetClick }) {
     );
 }
 
-// Export hanya komponen AssetTable
+// Export WalletFilterForm sebagai sub-komponen statis
+AssetTable.WalletFilterForm = WalletFilterForm;
 export default AssetTable;

@@ -9,8 +9,8 @@ const {
 
 const router = express.Router();
 
-// Route 1: Mendapatkan daftar aset berdasarkan pemilik
-router.get('/owner/:address/assets', getAssetsByOwnerController);
+// FIX: Rute utama kini adalah /assets (tanpa path parameter)
+router.get('/assets', getAssetsByOwnerController);
 
 // Route 2: Mendapatkan detail aset untuk IP ID tertentu
 router.get('/assets/:ipId/details', getAssetDetailsController);

@@ -16,24 +16,22 @@ function ExplorerPage() {
     totalResults,
     updateSearchState,
     hasSearched,
-    currentQuery: currentAddress, // currentAddress: Alamat terakhir yang dicari
+    currentQuery: currentAddress, 
+    currentTokenContract, 
   } = useSearch();
 
   // State Lokal
-  const [walletAddress, setWalletAddress] = useState(currentAddress); // Menggunakan alamat dari Context
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [error, setError] = useState(null);
   const [hasMore, setHasMore] = useState(offset < totalResults); 
   const [selectedAsset, setSelectedAsset] = useState(null);
   
-  // Statistik Dashboard (MOCK data)
   const [stats, setStats] = useState({ totalRoyalties: '...', totalAssets: '...', totalLicensees: '...' });
 
 
-  // Efek untuk mengambil statistik saat pertama kali dimuat
+  // Efek untuk mengambil statistik dashboard (MOCK)
   useEffect(() => {
-    // MOCK data untuk statistik dashboard utama
     setStats({
         totalRoyalties: '2.54 ETH',
         totalAssets: 125, 
@@ -41,83 +39,150 @@ function ExplorerPage() {
     });
   }, []);
 
-  const handleFetchAssets = useCallback(async (address, newSearch = true) => {
-    if (!address || !/^0x[a-fA-F0-9]{40}$/.test(address)) {
-        setError("Please enter a valid Ethereum wallet address.");
+  // Helper untuk melakukan satu panggilan API
+  const fetchAttempt = useCallback(async (ownerAddr, tokenContractAddr, currentOffset) => {
+    
+    // Membangun Query Parameters
+    const params = new URLSearchParams({
+        limit: PAGE_LIMIT,
+        offset: currentOffset,
+    });
+    
+    if (ownerAddr) {
+        params.append('ownerAddress', ownerAddr);
+    }
+    
+    if (tokenContractAddr) {
+        params.append('tokenContract', tokenContractAddr);
+    }
+
+    // FIX: Tambahkan timeout eksplisit 10 detik
+    const response = await axios.get(`${API_BASE_URL}/assets?${params.toString()}`, { timeout: 10000 });
+    return response.data; // { data, pagination }
+  }, [API_BASE_URL]);
+
+  const handleFetchAssets = useCallback(async (address, newSearch = true) => { 
+    const singleInput = address?.trim();
+    
+    // Validasi Dasar
+    if (!singleInput || !/^0x[a-fA-F0-9]{40}$/.test(singleInput)) {
+        setError("Please enter a valid Ethereum wallet address or token contract.");
         return;
     }
     
+    // START Loading State
     newSearch ? setIsLoading(true) : setIsLoadingMore(true);
     setError(null);
     updateSearchState({ hasSearched: true });
 
-
     let currentOffset = newSearch ? 0 : offset;
+    let finalSuccess = false;
+    let finalError = null;
+    let total = 0;
+    let responseData = [];
     
-    if (newSearch) {
-      updateSearchState({
-          results: [],
-          offset: 0,
-          totalResults: 0,
-          currentQuery: address, // Simpan address di currentQuery
-      });
-      currentOffset = 0;
-    }
-
+    // --- Pembungkus Try-Finally Global untuk menjamin reset loading ---
     try {
-      const params = new URLSearchParams({
-        limit: PAGE_LIMIT,
-        offset: currentOffset,
-      });
+        // Reset Context State untuk pencarian baru
+        if (newSearch) {
+            updateSearchState({
+                results: [],
+                offset: 0,
+                totalResults: 0,
+                currentQuery: singleInput, // Simpan input di Context
+                currentTokenContract: null, // Reset contract role
+            });
+            currentOffset = 0;
+        }
+        
+        // --- 1. PERCOBAAN 1: COBA SEBAGAI OWNER ---
+        try {
+            console.log(`Attempt 1: Owner=${singleInput}, Contract=NULL`);
+            const response1 = await fetchAttempt(singleInput, null, currentOffset); 
+            
+            if (response1.data.length > 0) {
+                finalSuccess = true;
+                responseData = response1.data;
+                total = response1.pagination?.total || 0;
+                updateSearchState({ currentTokenContract: null, currentQuery: singleInput });
+            }
+        } catch (e) {
+            finalError = e;
+            console.warn("Attempt 1 (Owner) failed or returned zero assets. Trying fallback logic.", e);
+        }
+        
+        // --- 2. PERCOBAAN 2: FALLBACK SEBAGAI TOKEN CONTRACT ---
+        if (!finalSuccess) {
+             console.log(`Attempt 2: Fallback Swap (Owner=NULL, Contract=${singleInput}).`);
+             try {
+                 // Coba menggunakan Input Tunggal sebagai Token Contract
+                 const response2 = await fetchAttempt(null, singleInput, currentOffset); 
 
-      // Mengganti endpoint /search menjadi /owner/:address/assets
-      const response = await axios.get(
-        `${API_BASE_URL}/owner/${address}/assets?${params.toString()}`,
-      );
-      
-      const newResults = response.data.data || [];
-      const total = response.data.pagination?.total || 0;
-      
-      const updatedResults = newSearch ? newResults : [...results, ...newResults];
-      const newOffset = updatedResults.length;
+                 if (response2.data.length > 0) {
+                     finalSuccess = true;
+                     responseData = response2.data;
+                     total = response2.pagination?.total || 0;
+                     
+                     // PENTING: Jika berhasil di sini, kita set Owner=NULL dan Contract=Input
+                     updateSearchState({
+                         currentQuery: null, // Owner disetel ke NULL
+                         currentTokenContract: singleInput, // Input Utama yang berhasil sebagai Contract
+                     });
+                 }
+             } catch (e) {
+                 finalError = e;
+                 console.error("Attempt 2 (Fallback Contract) failed.", e);
+             }
+        }
+        
+        // --- 3. FINALISASI STATE ---
+        const updatedResults = newSearch ? responseData : [...results, ...responseData];
+        const newOffset = updatedResults.length;
 
-      updateSearchState({
-          results: updatedResults,
-          offset: newOffset,
-          totalResults: total,
-      });
-      
-      setHasMore(newOffset < total);
-      
-    } catch (err) {
-      setError(
-        err.response?.data?.message || 'Failed to fetch assets. Please check API connection.'
-      );
-      console.error('API Call Error:', err.response ? err.response.data : err.message);
+        if (finalSuccess) {
+            updateSearchState({
+                results: updatedResults,
+                offset: newOffset,
+                totalResults: total,
+                hasSearched: true,
+            });
+            setHasMore(newOffset < total); 
+        } else if (newSearch) {
+            // Final Failure State
+            updateSearchState({ results: [], offset: 0, totalResults: 0, hasSearched: true, currentQuery: null, currentTokenContract: null });
+            setError(
+                finalError?.response?.data?.message || "No assets found. The address is neither an owner nor a token contract, or there is a network issue."
+            );
+            setHasMore(false);
+        }
+    } catch (e) {
+        // Tangkap error kritis yang mungkin terjadi selama manipulasi state
+        setError("Critical error during asset loading.");
+        console.error("CRITICAL UNCAUGHT ERROR:", e);
     } finally {
-      newSearch ? setIsLoading(false) : setIsLoadingMore(false);
+        // GUARANTEE RESET LOADING STATE (Ini adalah kunci perbaikan)
+        newSearch ? setIsLoading(false) : setIsLoadingMore(false);
     }
-  }, [offset, results, updateSearchState]); 
-
-  // FIX: Efek baru untuk memulihkan hasil dari Context
+  }, [offset, results, updateSearchState, fetchAttempt]); 
+  
+  // Logika pemulihan state (self-healing)
   useEffect(() => {
-      if (hasSearched && currentAddress && results.length === 0 && totalResults > 0 && !isLoading) {
-          // Jika Context bilang kita sudah mencari (hasSearched=true) dan ada alamat tersimpan,
-          // tetapi hasil asetnya (results) kosong, coba pulihkan data dari server.
-          // Ini terjadi ketika user refresh atau navigasi kembali dan Context ter-reset sebagian.
+      if (hasSearched && (currentAddress || currentTokenContract) && results.length === 0 && totalResults > 0 && !isLoading) {
           console.log("[EXPLORER] Attempting to recover lost asset list.");
-          handleFetchAssets(currentAddress, true);
+          handleFetchAssets(currentAddress || currentTokenContract, true); 
       }
-  }, [hasSearched, currentAddress, results.length, totalResults, isLoading, handleFetchAssets]);
+  }, [hasSearched, currentAddress, currentTokenContract, results.length, totalResults, isLoading, handleFetchAssets]);
 
 
-  const handleSubmit = (e) => {
-      e.preventDefault();
-      handleFetchAssets(walletAddress, true);
+  const handleSubmit = (address) => { 
+      handleFetchAssets(address, true);
   };
   
   const handleLoadMore = () => {
-    handleFetchAssets(currentAddress, false);
+      const addressToLoad = currentAddress || currentTokenContract;
+      if (addressToLoad) {
+          handleFetchAssets(addressToLoad, false);
+      }
   };
   
   const handleViewDetails = (ipId) => {
@@ -136,38 +201,23 @@ function ExplorerPage() {
 
         {/* Wallet Input Area */}
         <div className="bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-700">
-            <h2 className="text-xl font-bold mb-4 text-purple-400">1. Enter Creator Wallet</h2>
+            <h2 className="text-xl font-bold mb-4 text-purple-400">1. Input Creator Address</h2>
             
-            <form onSubmit={handleSubmit} className="flex flex-col md:flex-row gap-3">
-                <input
-                    type="text"
-                    value={walletAddress}
-                    onChange={(e) => setWalletAddress(e.target.value)}
-                    placeholder="e.g., 0x97eD98a46e952a90463b7270a16a9ba9e0bf671E"
-                    className="flex-grow p-3 bg-gray-900 border border-purple-800 rounded-lg focus:ring-2 focus:ring-purple-500 text-white placeholder:text-gray-500"
-                    required
-                />
-                <button
-                    type="submit"
-                    disabled={isLoading}
-                    className="p-3 px-6 font-bold text-white bg-purple-600 rounded-lg hover:bg-purple-700 transition-colors disabled:bg-gray-700"
-                >
-                    {isLoading ? 'Loading...' : 'Load Assets'}
-                </button>
-            </form>
+            {/* FIX: Meneruskan prop isLoading ke WalletFilterForm */}
+            <AssetTable.WalletFilterForm
+                onFetch={handleSubmit}
+                initialOwnerAddress={currentAddress || currentTokenContract}
+                isSubmitting={isLoading} 
+            />
+            
             {error && <p className="text-red-400 text-sm mt-3">{error}</p>}
         </div>
 
         {/* Header Dashboard Stats */}
         {hasSearched && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-                {/* Total Royalties collected by this wallet (MOCK) */}
                 <StatCard title="Total Royalties Collected" value={stats.totalRoyalties} icon="royalty" />
-                
-                {/* Total Assets owned (REAL DATA) */}
                 <StatCard title="Total IP Assets Found" value={totalResults.toLocaleString()} icon="asset" />
-                
-                {/* Total Unique Licensees (MOCK) */}
                 <StatCard title="Total Unique Licensees" value={stats.totalLicensees} icon="license" isWarning={true} />
             </div>
         )}

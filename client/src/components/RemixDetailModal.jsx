@@ -148,7 +148,7 @@ const TopLicenseesTab = ({ ipId }) => {
 };
 
 // Komponen Utama KONTEN (Bukan Modal Sebenarnya Lagi)
-const RemixDetailModalContent = ({ asset, isPage = false }) => {
+const RemixDetailModalContent = ({ asset, onClose, isLoading }) => {
   const [activeTab, setActiveTab] = useState('details');
 
   useEffect(() => {
@@ -157,23 +157,35 @@ const RemixDetailModalContent = ({ asset, isPage = false }) => {
 
   // Kami menganggap AssetDetailPage sudah menangani loading/error di level atas.
   
+ 
   const formattedDate = asset.createdAt ? new Date(asset.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Not Provided';
   const creatorName = asset.nftMetadata?.raw?.metadata?.creators?.[0]?.name || 'Not Provided';
   const mediaTypeDisplay = asset.mediaType === 'UNKNOWN' ? 'Not Specified' : asset.mediaType;
-
   // UI/UX: Rombak tampilan agar sesuai untuk halaman penuh.
-  return (
+return (
     <div 
-      className={`bg-gray-900 border border-purple-800 rounded-2xl w-full flex flex-col overflow-hidden shadow-2xl ${isPage ? 'h-auto' : 'max-w-4xl max-h-[90vh]'}`}
+      id="remix-modal"
+      // Backdrop: Hitam/transparan, fixed, di tengah.
+      className="fixed inset-0 bg-black/70 backdrop-blur-sm flex justify-center items-center z-50 p-4 animate-fade-in"
     >
-        {/* Header dirombak menjadi header card biasa */}
+      <div 
+        // FIX KRITIS: Membatasi lebar (max-w-2xl) dan tinggi (max-h-[90vh]) agar modal muncul sebagai pop-up di tengah.
+        className="bg-gray-900 border border-purple-800 rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden shadow-2xl"
+        onClick={e => e.stopPropagation()}
+      >
         <header className="p-6 flex-shrink-0 border-b border-purple-900/50">
             <div className="flex justify-between items-start">
-                <h2 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-400 tracking-tight line-clamp-2 pr-10">{asset.title || 'Untitled Asset'}</h2>
-                {/* Tombol close dihilangkan karena AssetDetailPage sudah menanganinya dengan tombol "Kembali" */}
+                <h2 className="text-2xl font-bold text-white tracking-tight line-clamp-2 pr-10">{asset.title || 'Untitled Asset'}</h2>
+                <button 
+                    onClick={onClose} 
+                    className="text-gray-400 hover:text-red-400 p-2 rounded-full transition-colors bg-gray-800"
+                    title="Close and Back to Explorer"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
             </div>
             <div className="flex mt-4 border-b border-gray-700">
-                <button onClick={() => setActiveTab('details')} className={`py-2 px-5 font-semibold transition-colors ${activeTab === 'details' ? 'text-purple-400 border-b-2 border-purple-400' : 'text-gray-400 hover:text-white'}`}>Details & Analytics</button>
+                <button onClick={() => setActiveTab('details')} className={`py-2 px-5 font-semibold transition-colors ${activeTab === 'details' ? 'text-purple-400 border-b-2 border-purple-400' : 'text-gray-400 hover:text-white'}`}>Details</button>
                 <button onClick={() => setActiveTab('ledger')} className={`py-2 px-5 font-semibold transition-colors ${activeTab === 'ledger' ? 'text-purple-400 border-b-2 border-purple-400' : 'text-gray-400 hover:text-white'}`}>Royalty Ledger</button>
                 <button onClick={() => setActiveTab('licensees')} className={`py-2 px-5 font-semibold transition-colors ${activeTab === 'licensees' ? 'text-purple-400 border-b-2 border-purple-400' : 'text-gray-400 hover:text-white'}`}>Top Licensees</button>
             </div>
@@ -204,6 +216,7 @@ const RemixDetailModalContent = ({ asset, isPage = false }) => {
                 View on Explorer
             </a>
         </footer>
+      </div>
     </div>
   );
 };

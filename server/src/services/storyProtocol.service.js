@@ -1,5 +1,5 @@
 const axios = require('axios');
-const { get, set } = require('../utils/cache'); // FIX: Memastikan utilitas cache diimpor
+const { get, set } = require('../utils/cache'); 
 
 // Simple utility for formatting Wei (18 decimals) to a readable ETH string
 const formatWeiToEther = (weiAmount) => {
@@ -27,7 +27,6 @@ const STORY_TRANSACTIONS_API_BASE_URL = 'https://api.storyapis.com/api/v4/transa
 const STORY_TRANSACTION_DETAIL_BASE_URL = 'https://api.storyapis.com/api/v4/transactions'; 
 
 const storyApiKey = process.env.STORY_PROTOCOL_API_KEY;
-// KUNCI INI DI-HARDCODE UNTUK MEMASTIKAN OTENTIKASI BERHASIL (MENGHILANGKAN ERROR 403)
 const storyScanApiKey = 'MhBsxkU1z9fG6TofE59KqiiWV-YlYE8Q4awlLQehF3U'; 
 
 // Utility untuk memanggil API Story Protocol (Assets atau Transactions)
@@ -44,13 +43,11 @@ const fetchStoryApi = async (url, apiKey, body, method = 'POST') => {
 
     try {
         const response = await axios(options);
-        // Mengembalikan data dan informasi pagination (untuk API Assets)
         if (url.includes(STORY_ASSETS_API_BASE_URL) && method === 'POST') {
              return { data: response.data.data, pagination: response.data.pagination };
         }
         return response.data;
     } catch (error) {
-        // Penanganan 404/400 (No data found)
         if (error.response && (error.response.status === 404 || error.response.status === 400)) {
             if (url.includes(STORY_ASSETS_API_BASE_URL)) return { data: [], pagination: { total: 0 } };
             if (url.includes(STORY_TRANSACTIONS_API_BASE_URL)) return { events: [] };
@@ -58,10 +55,8 @@ const fetchStoryApi = async (url, apiKey, body, method = 'POST') => {
         
         console.error(`[SERVICE_ERROR] Gagal mengambil data dari Story Protocol API (${url}).`);
         if (error.response) {
-            // Melemparkan error dengan status dan pesan yang jelas
             throw new Error(`API Error: Status ${error.response.status} - ${error.response.data.message || 'Gagal mengambil data'}`);
         } else {
-            // Melemparkan error untuk masalah jaringan/konfigurasi (yang mungkin menyebabkan "Error Message: Error")
             throw new Error('Terjadi kesalahan saat membuat permintaan atau tidak ada respons.');
         }
     }
@@ -119,30 +114,55 @@ const getAndAggregateRoyaltyEventsFromApi = async (ipId) => {
 
 
 /**
- * CORE FUNCTION: Get all IP Assets for a given owner address (Used by the Dashboard).
+ * CORE FUNCTION: Get all IP Assets for a given filter set.
+ * ownerAddress is now truly optional, allowing filtering only by tokenContract.
  */
-const getAssetsByOwner = async (ownerAddress, limit = 20, offset = 0) => { // Mengganti limit default ke 20
-    if (!ownerAddress || !/^0x[a-fA-F0-9]{40}$/.test(ownerAddress)) return { data: [], pagination: { total: 0 } };
-
-    const cacheKey = `assets:owner:${ownerAddress}:${limit}:${offset}`;
-    const cachedResponse = get(cacheKey);
-    if (cachedResponse) {
-        console.log(`[SERVICE] Mengambil aset dari cache untuk pemilik: ${ownerAddress}`);
-        return cachedResponse;
+const getAssetsByOwner = async (ownerAddress, limit = 20, offset = 0, tokenContract) => {
+    
+    // --- LOGIC: BUILD FILTER CLAUSE ---
+    const whereClause = {};
+    
+    // 1. Owner Address (Apply if provided and valid)
+    if (ownerAddress) {
+        whereClause.ownerAddress = ownerAddress.trim(); 
     }
 
+    // 2. Token Contract (Apply if provided)
+    if (tokenContract) {
+        const cleanedTokenContract = tokenContract.trim();
+        if (cleanedTokenContract) { 
+             whereClause.tokenContract = cleanedTokenContract; 
+        }
+    }
+
+    // MANDATORY CHECK: Harus ada setidaknya satu filter (Owner atau Token Contract)
+    if (Object.keys(whereClause).length === 0) {
+        return { data: [], pagination: { total: 0 } };
+    }
+
+    // Build unique cache key
+    const cacheKey = `assets:owner:${ownerAddress || 'none'}:${limit}:${offset}:${tokenContract || 'all'}`;
+    const cachedResponse = get(cacheKey);
+    if (cachedResponse) {
+        console.log(`[SERVICE] Mengambil aset dari cache untuk filter: ${cacheKey}`);
+        return cachedResponse;
+    }
+    
     const requestBody = {
         includeLicenses: true, 
         moderated: false,      
         orderBy: "blockNumber",
         orderDirection: "desc",
         pagination: { limit: limit, offset: offset },
-        where: { ownerAddress: ownerAddress } // FIX: Menggunakan ownerAddress, bukan owner
+        where: whereClause 
     };
     
+    console.log("[SERVICE DEBUG] Final Assets Request Body:", JSON.stringify(requestBody, null, 2));
+
+
     const response = await fetchStoryApi(STORY_ASSETS_API_BASE_URL, storyApiKey, requestBody);
     set(cacheKey, response);
-    return response; // { data: assets, pagination: { total: X, ... } }
+    return response; 
 };
 
 

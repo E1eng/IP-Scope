@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import LicenseCard from './LicenseCard';
 import DetailRow from './DetailRow';
+import { Link } from 'react-router-dom';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
@@ -17,13 +18,12 @@ const AnalyticsPanel = ({ asset }) => {
     if (analytics.errorMessage) {
         return (
             <div className="bg-red-900/40 p-4 rounded-lg border border-red-700">
-                <h3 className='text-md font-semibold text-red-300'>Analytics Error</h3>
-                <p className="text-xs text-red-200 font-mono">{analytics.errorMessage}</p>
+                <h3 className='text-md font-semibold text-red-300 mb-2'>Analytics Error</h3>
+                <p className="text-xs text-red-200 font-mono break-words">{analytics.errorMessage}</p>
             </div>
         );
     }
     
-    // Menggunakan struktur data 'totalRoyaltiesPaid' yang baru (object)
     const royalties = analytics.totalRoyaltiesPaid || {};
     const royaltyEntries = Object.entries(royalties);
 
@@ -61,11 +61,11 @@ const RoyaltyLedgerTab = ({ ipId }) => {
             setIsLoading(true);
             setError(null);
             try {
-                // Endpoint ini perlu ada di backend Anda
                 const response = await axios.get(`${API_BASE_URL}/assets/${ipId}/royalty-transactions`);
                 setTransactions(response.data || []);
             } catch (err) {
-                setError("Failed to load royalty ledger.");
+                const errorMessage = err.response?.data?.message || "Failed to load royalty ledger.";
+                setError(errorMessage);
             } finally {
                 setIsLoading(false);
             }
@@ -74,23 +74,22 @@ const RoyaltyLedgerTab = ({ ipId }) => {
     }, [ipId]);
 
     if (isLoading) return <div className="text-center p-6 text-purple-400">Loading Royalty Ledger...</div>;
-    if (error) return <div className="text-center p-6 text-red-400 bg-red-900/30 rounded-lg">{error}</div>;
+    if (error) return <div className="text-center p-6 text-red-400 bg-red-900/30 rounded-lg break-words">{error}</div>;
     if (transactions.length === 0) return <div className="text-center p-6 text-gray-500">No royalty payment events found.</div>;
 
     return (
         <div className="space-y-3 text-sm">
             {transactions.map(tx => (
-                <div key={tx.txHash} className="p-3 bg-gray-800/50 rounded-lg border border-gray-700/50">
-                    <div className="flex justify-between items-center mb-2">
-                        <span className="font-mono text-xs text-blue-400">{tx.txHash.substring(0, 12)}...</span>
-                        <span className="font-bold text-lg text-green-400">{tx.value}</span>
+                <div key={tx.txHash} className="p-3 bg-gray-800/50 rounded-lg border border-gray-700/50 hover:border-purple-600 transition-colors">
+                    <div className="flex justify-between items-center mb-1">
+                        <span className="font-mono text-sm text-green-400 font-bold">{tx.value}</span>
+                        <a href={`https://storyscan.io/tx/${tx.txHash}`} target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:text-purple-300 text-xs font-semibold flex items-center">
+                            View Tx &#x2197;
+                        </a>
                     </div>
                     <div className="flex justify-between items-center text-xs text-gray-400">
-                        <span>From: <span className="font-mono">{tx.from.substring(0, 12)}...</span></span>
-                        <span>{new Date(tx.timestamp).toLocaleString('en-US')}</span>
-                        <a href={`https://storyscan.io/tx/${tx.txHash}`} target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:underline font-semibold">
-                            &#x2197; View on Explorer
-                        </a>
+                        <span className="truncate max-w-[40%]">From: <span className="font-mono">{tx.from.substring(0, 8)}...</span></span>
+                        <span>{tx.timestamp}</span>
                     </div>
                 </div>
             ))}
@@ -110,11 +109,11 @@ const TopLicenseesTab = ({ ipId }) => {
             setIsLoading(true);
             setError(null);
             try {
-                // Endpoint ini perlu ada di backend Anda
                 const response = await axios.get(`${API_BASE_URL}/assets/${ipId}/top-licensees`);
                 setLicensees(response.data || []);
             } catch (err) {
-                setError("Failed to load top licensees.");
+                const errorMessage = err.response?.data?.message || "Failed to load top licensees.";
+                setError(errorMessage);
             } finally {
                 setIsLoading(false);
             }
@@ -122,84 +121,59 @@ const TopLicenseesTab = ({ ipId }) => {
         fetchLicensees();
     }, [ipId]);
 
-    if (isLoading) return <div className="text-center p-4">Loading Top Licensees...</div>;
-    if (error) return <div className="text-center p-4 text-red-400 bg-red-900/30 rounded-lg">{error}</div>;
+    if (isLoading) return <div className="text-center p-4 text-purple-400">Loading Top Licensees...</div>;
+    if (error) return <div className="text-center p-4 text-red-400 bg-red-900/30 rounded-lg break-words">{error}</div>;
     if (licensees.length === 0) return <div className="text-center p-4 text-gray-500">No licensees found.</div>;
     
     return (
         <div className="space-y-2 text-xs">
             {licensees.map((lic, index) => (
-                <div key={lic.address} className="p-3 bg-gray-800/50 rounded-lg">
-                    <div className="flex justify-between items-center">
-                        <p className="font-mono text-white">#{index + 1}: {lic.address.substring(0, 12)}...</p>
-                        <p className="font-bold text-purple-400">{lic.count} payments</p>
+                <div key={lic.address} className="p-3 bg-gray-800/50 rounded-lg border border-gray-700/50 flex justify-between items-center hover:bg-gray-800 transition-colors">
+                    <div className="flex items-center space-x-3">
+                        <span className={`text-lg font-extrabold ${index === 0 ? 'text-yellow-400' : index === 1 ? 'text-gray-400' : 'text-orange-400'}`}>
+                            #{index + 1}
+                        </span>
+                        <p className="font-mono text-gray-300 text-xs truncate max-w-[150px]" title={lic.address}>
+                            {lic.address.substring(0, 10)}...
+                        </p>
                     </div>
-                    <p className="text-right text-sm font-semibold text-green-400 mt-1">{lic.totalValue}</p>
+                    <div className="text-right">
+                        <p className="font-bold text-sm text-green-400">{lic.totalValue}</p>
+                        <p className="text-gray-500 mt-0.5">{lic.count} payments</p>
+                    </div>
                 </div>
             ))}
         </div>
     );
 };
 
-// Komponen Utama Modal
-const RemixDetailModal = ({ asset, onClose, isLoading }) => {
+// Komponen Utama KONTEN (Bukan Modal Sebenarnya Lagi)
+const RemixDetailModalContent = ({ asset, isPage = false }) => {
   const [activeTab, setActiveTab] = useState('details');
 
-  // Efek untuk mereset tab ke 'details' setiap kali aset baru dipilih
   useEffect(() => {
     setActiveTab('details');
   }, [asset?.ipId]);
 
-  // Tampilan saat memuat
-  if (isLoading || !asset) {
-    return (
-        <div className="fixed inset-0 bg-black/70 flex justify-center items-center z-50 p-4">
-            <div className="p-6 bg-gray-800 rounded-2xl text-purple-400 flex items-center shadow-2xl border border-purple-800">
-                <div className="animate-spin h-6 w-6 mr-4 border-2 border-purple-400 border-t-transparent rounded-full"></div>
-                Loading Asset Details...
-            </div>
-        </div>
-    );
-  }
+  // Kami menganggap AssetDetailPage sudah menangani loading/error di level atas.
   
-  // Tampilan saat terjadi error
-  if (asset.isError) {
-      return (
-        <div className="fixed inset-0 bg-black/70 flex justify-center items-center z-50 p-4" onClick={onClose}>
-            <div className="bg-red-900/50 border border-red-700 rounded-lg w-full max-w-lg p-6 flex flex-col" onClick={e => e.stopPropagation()}>
-                <h2 className="text-xl font-bold text-red-400 mb-2">{asset.title || 'Error'}</h2>
-                <p className="text-red-300 mb-4">{asset.description || 'Could not load asset details.'}</p>
-                <p className="text-sm text-gray-400">Asset ID: {asset.ipId}</p>
-                <button onClick={onClose} className="mt-4 p-3 font-bold bg-red-600 rounded-xl hover:bg-red-700 text-white">Close</button>
-            </div>
-        </div>
-      );
-  }
-
-  // Format data dengan nilai default yang informatif
   const formattedDate = asset.createdAt ? new Date(asset.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Not Provided';
   const creatorName = asset.nftMetadata?.raw?.metadata?.creators?.[0]?.name || 'Not Provided';
   const mediaTypeDisplay = asset.mediaType === 'UNKNOWN' ? 'Not Specified' : asset.mediaType;
 
+  // UI/UX: Rombak tampilan agar sesuai untuk halaman penuh.
   return (
     <div 
-      id="remix-modal"
-      className="fixed inset-0 bg-black/70 backdrop-blur-sm flex justify-center items-center z-50 p-4 animate-fade-in"
-      onClick={onClose}
+      className={`bg-gray-900 border border-purple-800 rounded-2xl w-full flex flex-col overflow-hidden shadow-2xl ${isPage ? 'h-auto' : 'max-w-4xl max-h-[90vh]'}`}
     >
-      <div 
-        className="bg-gray-900 border border-purple-800 rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden shadow-2xl"
-        onClick={e => e.stopPropagation()}
-      >
+        {/* Header dirombak menjadi header card biasa */}
         <header className="p-6 flex-shrink-0 border-b border-purple-900/50">
             <div className="flex justify-between items-start">
-                <h2 className="text-2xl font-bold text-white tracking-tight line-clamp-2 pr-10">{asset.title || 'Untitled Asset'}</h2>
-                <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                </button>
+                <h2 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-400 tracking-tight line-clamp-2 pr-10">{asset.title || 'Untitled Asset'}</h2>
+                {/* Tombol close dihilangkan karena AssetDetailPage sudah menanganinya dengan tombol "Kembali" */}
             </div>
             <div className="flex mt-4 border-b border-gray-700">
-                <button onClick={() => setActiveTab('details')} className={`py-2 px-5 font-semibold transition-colors ${activeTab === 'details' ? 'text-purple-400 border-b-2 border-purple-400' : 'text-gray-400 hover:text-white'}`}>Details</button>
+                <button onClick={() => setActiveTab('details')} className={`py-2 px-5 font-semibold transition-colors ${activeTab === 'details' ? 'text-purple-400 border-b-2 border-purple-400' : 'text-gray-400 hover:text-white'}`}>Details & Analytics</button>
                 <button onClick={() => setActiveTab('ledger')} className={`py-2 px-5 font-semibold transition-colors ${activeTab === 'ledger' ? 'text-purple-400 border-b-2 border-purple-400' : 'text-gray-400 hover:text-white'}`}>Royalty Ledger</button>
                 <button onClick={() => setActiveTab('licensees')} className={`py-2 px-5 font-semibold transition-colors ${activeTab === 'licensees' ? 'text-purple-400 border-b-2 border-purple-400' : 'text-gray-400 hover:text-white'}`}>Top Licensees</button>
             </div>
@@ -217,6 +191,7 @@ const RemixDetailModal = ({ asset, onClose, isLoading }) => {
                             <DetailRow label="Media Type" value={mediaTypeDisplay} />
                             <DetailRow label="Creator" value={creatorName} />
                             <DetailRow label="Date Created" value={formattedDate} />
+                            {asset.tokenContract && <DetailRow label="Token Contract" value={asset.tokenContract} />}
                         </div>
                     </div>
                 )}
@@ -229,9 +204,9 @@ const RemixDetailModal = ({ asset, onClose, isLoading }) => {
                 View on Explorer
             </a>
         </footer>
-      </div>
     </div>
   );
 };
 
-export default RemixDetailModal;
+// Ubah nama export agar sesuai dengan import di AssetDetailPage
+export default RemixDetailModalContent;

@@ -1,14 +1,10 @@
 const axios = require('axios');
 const https = require('https');
-const { client, account } = require('../utils/storyClient');
 const { formatUnits } = require("viem");
 const cache = require('../utils/cache');
 
 const STORY_API_BASE_URL = 'https://api.storyapis.com/api/v4';
 const STORYSCAN_API_BASE_URL = 'https://www.storyscan.io/api/v2';
-const TRANSACTIONS_URL = `${STORY_API_BASE_URL}/transactions`;
-const ASSETS_DETAIL_URL = `${STORY_API_BASE_URL}/assets`;;
-const ASSETS_EDGES_URL = `${STORY_API_BASE_URL}/assets/edges`; 
 
 const storyApiKey = process.env.STORY_PROTOCOL_API_KEY;
 const httpsAgent = new https.Agent({ keepAlive: true });
@@ -25,27 +21,25 @@ const storyScanApi = axios.create({
     httpsAgent: httpsAgent,
 });
 
-const MAX_TREE_DEPTH = 5;
-const CONCURRENCY_LIMIT = 25;
+const MAX_TREE_DEPTH = 10;
+const CONCURRENCY_LIMIT = 50;
 
 async function processWithConcurrency(items, task) {
     const results = [];
     const queue = [...items];
     const workers = [];
-
     for (let i = 0; i < CONCURRENCY_LIMIT; i++) {
         workers.push((async () => {
             while (queue.length > 0) {
                 const item = queue.shift();
-                if (item) {
-                    results.push(await task(item));
-                }
+                if (item) results.push(await task(item));
             }
         })());
     }
     await Promise.all(workers);
     return results;
 }
+
 
 const checkApiKey = () => {
     if (!storyApiKey || storyApiKey === 'YOUR_STORY_PROTOCOL_API_KEY_HERE') {
@@ -56,33 +50,21 @@ const checkApiKey = () => {
 const normalizeAssetData = (asset) => {
     if (!asset) return null;
     const nftMetadata = asset.nftMetadata || {};
-    const rawMetadata = nftMetadata.raw?.metadata || {};
-    const firstLicense = asset.licenses && asset.licenses.length > 0 ? asset.licenses[0] : null;
-    
     const mediaUrl = nftMetadata.image?.url || nftMetadata.image?.thumbnailUrl || null;
-    
     let mediaType = nftMetadata.mediaType ? nftMetadata.mediaType.toUpperCase() : 'UNKNOWN';
-
     if (mediaType === 'UNKNOWN' && mediaUrl) {
         if (/\.(jpg|jpeg|png|gif|webp|svg)$/i.test(mediaUrl)) mediaType = 'IMAGE';
         else if (/\.(mp4|webm|mov)$/i.test(mediaUrl)) mediaType = 'VIDEO';
         else if (/\.(mp3|wav|ogg|flac)$/i.test(mediaUrl)) mediaType = 'AUDIO';
-        else if (/\.(txt|md|json)$/i.test(mediaUrl)) mediaType = 'TEXT';
     }
-
     return {
-        ...asset,
-        ipId: asset.ipId || 'N/A',
-        title: asset.name || rawMetadata.name || 'Untitled Asset',
-        description: asset.description || rawMetadata.description || 'No description available.',
+        ipId: asset.ipId,
+        title: asset.name || 'Untitled Asset',
+        description: asset.description || 'No description.',
         mediaType: mediaType,
         mediaUrl: mediaUrl,
-        parentsCount: asset.parentsCount !== undefined ? asset.parentsCount : (asset.parents?.length || 0),
-        pilTerms: firstLicense ? firstLicense.terms : null, 
-        royaltyPolicy: firstLicense ? firstLicense.licensingConfig : null,
-        createdAt: asset.createdAt || null, 
-        score: asset.score || 0,
-        similarity: asset.similarity || 0,
+        royaltyPolicy: asset.licenses?.[0]?.licensingConfig,
+        createdAt: asset.createdAt,
     };
 };
 
@@ -90,20 +72,12 @@ const getIpAsset = async (ipId) => {
     const cacheKey = `ipAsset-${ipId}`;
     const cachedData = cache.get(cacheKey);
     if (cachedData) return cachedData;
-
-    checkApiKey();
-    try {
-        const detailsBody = { where: { ipIds: [ipId.trim()] }, includeLicenses: true };
-        const detailsResponse = await storyApi.post('/assets', detailsBody);
-        const asset = detailsResponse.data.data?.[0];
-        if (!asset) throw new Error(`Asset with ID ${ipId.trim()} not found`);
-        
-        const normalized = normalizeAssetData(asset);
-        cache.set(cacheKey, normalized);
-        return normalized;
-    } catch (error) {
-        throw new Error(`Failed to fetch asset detail for ID ${ipId.trim()}: ${error.message}`);
-    }
+    const detailsResponse = await storyApi.post('/assets', { where: { ipIds: [ipId.trim()] }, includeLicenses: true });
+    const asset = detailsResponse.data.data?.[0];
+    if (!asset) throw new Error(`Asset with ID ${ipId.trim()} not found`);
+    const normalized = normalizeAssetData(asset);
+    cache.set(cacheKey, normalized);
+    return normalized;
 };
 
 const getAllRoyaltyEvents = async (ipId) => {
@@ -171,15 +145,8 @@ const getRoyaltyHistoryAndValue = async (ipId) => {
 };
 
 const getDisputeStatus = async (ipId) => {
-    const body = {
-        where: { ipIds: [ipId], eventTypes: ["DisputeRaised", "DisputeResolved", "DisputeCancelled"] },
-        orderBy: "blockNumber",
-        orderDirection: "desc",
-        pagination: { limit: 1 }
-    };
-    const response = await storyApi.post('/transactions', body);
-    const lastEvent = response.data.data?.[0];
-    return lastEvent?.eventType === 'DisputeRaised' ? "Active" : "None";
+    const response = await storyApi.post('/transactions', { where: { ipIds: [ipId], eventTypes: ["DisputeRaised", "DisputeResolved", "DisputeCancelled"] }, orderBy: "blockNumber", orderDirection: "desc", pagination: { limit: 1 } });
+    return response.data.data?.[0]?.eventType === 'DisputeRaised' ? "Active" : "None";
 };
 
 const getOnChainAnalytics = async (ipId) => {
@@ -211,21 +178,17 @@ const fetchDerivativesIdTree = async (ipId, currentDepth, visited) => {
     if (currentDepth >= MAX_TREE_DEPTH || visited.has(ipId)) return { ipId, children: [] };
     visited.add(ipId);
     const node = { ipId, children: [] };
-    
     try {
-        let allDerivativeEdges = [], hasMore = true, offset = 0, limit = 20;
+        let allEdges = [], hasMore = true, offset = 0;
         while (hasMore) {
-            const edgesBody = { where: { parentIpId: ipId }, pagination: { limit, offset } };
-            const res = await storyApi.post('/assets/edges', edgesBody);
+            const res = await storyApi.post('/assets/edges', { where: { parentIpId: ipId }, pagination: { limit: 200, offset } });
             const edges = res.data.data || [];
-            if (edges.length > 0) allDerivativeEdges.push(...edges);
+            if (edges.length > 0) allEdges.push(...edges);
             hasMore = res.data.pagination?.hasMore || false;
-            offset += limit;
+            offset += 200;
         }
-        if (allDerivativeEdges.length > 0) {
-            node.children = await processWithConcurrency(allDerivativeEdges, edge => 
-                fetchDerivativesIdTree(edge.childIpId, currentDepth + 1, visited)
-            );
+        if (allEdges.length > 0) {
+            node.children = await processWithConcurrency(allEdges, edge => fetchDerivativesIdTree(edge.childIpId, currentDepth + 1, visited));
         }
     } catch (error) { console.error(`Error fetching derivatives for ${ipId}:`, error.message); }
     return node;
@@ -234,34 +197,30 @@ const fetchDerivativesIdTree = async (ipId, currentDepth, visited) => {
 const getGraphLayout = async (startAssetId) => {
     const idTree = await fetchDerivativesIdTree(startAssetId, 0, new Set());
     const allIpIds = new Set();
-    const traverseAndCollect = (node) => {
-        if (!node?.ipId) return;
-        allIpIds.add(node.ipId);
-        node.children?.forEach(traverseAndCollect);
-    };
-    traverseAndCollect(idTree);
+    const traverse = (node) => { allIpIds.add(node.ipId); node.children?.forEach(traverse); };
+    traverse(idTree);
 
     const ipIdArray = Array.from(allIpIds);
     const [assetDetails, disputeStatuses] = await Promise.all([
-        processWithConcurrency(ipIdArray, id => getIpAsset(id)),
-        processWithConcurrency(ipIdArray, id => getDisputeStatus(id))
+        processWithConcurrency(ipIdArray, id => getIpAsset(id).catch(() => null)),
+        processWithConcurrency(ipIdArray, id => getDisputeStatus(id).catch(() => 'Error'))
     ]);
     
-    const detailsMap = new Map(assetDetails.map(asset => asset ? [asset.ipId, asset] : null).filter(Boolean));
-    const disputeMap = new Map(disputeStatuses.map((status, i) => [ipIdArray[i], status]));
+    const detailsMap = new Map(assetDetails.map(a => a ? [a.ipId, a] : null).filter(Boolean));
+    const disputeMap = new Map(disputeStatuses.map((s, i) => [ipIdArray[i], s]));
 
-    const buildLightweightTree = (node) => {
-        if (!node?.ipId) return null;
+    const buildTree = (node) => {
         const details = detailsMap.get(node.ipId);
         if (!details) return null;
-
         return {
-            ...details,
+            ipId: details.ipId,
+            title: details.title,
+            mediaType: details.mediaType,
             analytics: { disputeStatus: disputeMap.get(node.ipId) },
-            children: node.children.map(buildLightweightTree).filter(Boolean)
+            children: node.children.map(buildTree).filter(Boolean)
         };
     };
-    return buildLightweightTree(idTree);
+    return buildTree(idTree);
 };
 
 const getRoyaltyTransactions = async (ipId) => {
@@ -338,10 +297,9 @@ const getTopLicensees = async (ipId) => {
 };
 
 module.exports = {
-    getGraphLayout,
+  getGraphLayout,
   getIpAsset, 
   getOnChainAnalytics, 
   getRoyaltyTransactions,
   getTopLicensees,
-  // Kita bisa menghapus getValueFlowData jika tidak lagi digunakan
 };

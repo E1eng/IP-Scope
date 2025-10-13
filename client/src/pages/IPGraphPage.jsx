@@ -16,23 +16,14 @@ function IPGraphPage() {
   const [analyticsData, setAnalyticsData] = useState(null);
 
   const transformTreeToGraph = (root, rootId) => {
-    const nodes = [];
-    const links = [];
-    const nodeMap = new Map();
-
+    const nodes = [], links = [], nodeMap = new Map();
     const traverse = (node, parentId = null) => {
       if (!node || !node.ipId || nodeMap.has(node.ipId)) return;
-      const d3Node = {
-        id: node.ipId,
-        title: node.title,
-        mediaType: node.mediaType,
-        isRoot: node.ipId === rootId,
-        analytics: node.analytics,
-      };
+      const d3Node = { ...node, isRoot: node.ipId === rootId };
       nodes.push(d3Node);
       nodeMap.set(node.ipId, d3Node);
       if (parentId) links.push({ source: parentId, target: node.ipId });
-      if (node.children) node.children.forEach(child => traverse(child, node.ipId));
+      node.children?.forEach(child => traverse(child, node.ipId));
     };
     traverse(root);
     return { nodes, links };
@@ -40,25 +31,23 @@ function IPGraphPage() {
 
   const handleFetchGraph = async (e) => {
     e.preventDefault();
-    if (!assetId.trim()) return;
+    const id = assetId.trim();
+    if (!id) return;
 
     setIsLoading(true);
     setGraphData(null);
     setError(null);
-    setSelectedAsset(null);
-    setAnalyticsData(null);
-
     try {
-      const response = await axios.get(`${API_BASE_URL}/graphs/${assetId.trim()}/layout`);
+      // --- PERBAIKAN UTAMA ADA DI SINI ---
+      const response = await axios.get(`${API_BASE_URL}/graphs/${id}/layout`);
       if (response.data) {
-        const { nodes, links } = transformTreeToGraph(response.data, assetId.trim());
-        setGraphData({ nodes, links });
+        setGraphData(transformTreeToGraph(response.data, id));
       } else {
-        throw new Error("API returned no data");
+        throw new Error("API returned no data for graph layout");
       }
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to load IP Graph. Check IP ID or backend connection.');
       console.error('IP Graph Fetch Error:', err);
+      setError(err.response?.data?.message || 'Failed to load IP Graph. Check IP ID or backend connection.');
     } finally {
       setIsLoading(false);
     }
@@ -66,71 +55,57 @@ function IPGraphPage() {
 
   const handleNodeClick = async (ipId) => {
       setIsModalLoading(true);
-      setSelectedAsset({ ipId }); // Tampilkan modal loading dengan ID
+      setSelectedAsset({ ipId }); 
       setAnalyticsData(null);
-
       try {
-          const [assetResponse, analyticsResponse] = await Promise.all([
+          // Panggil API untuk detail dan analitik BERAT secara bersamaan saat node diklik
+          const [assetRes, analyticsRes] = await Promise.all([
               axios.get(`${API_BASE_URL}/assets/${ipId}`),
-              axios.get(`${API_BASE_URL}/assets/${id}/analytics`)
+              axios.get(`${API_BASE_URL}/assets/${ipId}/analytics`)
           ]);
-          setSelectedAsset(assetResponse.data);
-          setAnalyticsData(analyticsResponse.data);
+          setSelectedAsset(assetRes.data);
+          setAnalyticsData(analyticsRes.data);
       } catch (err) {
           console.error(`Failed to fetch node details:`, err);
-          setSelectedAsset({ 
-            ipId, 
-            title: `Error Fetching Details`, 
-            description: "Could not load full data for this component.", 
-            isError: true 
-          });
+          setSelectedAsset({ ipId, isError: true, title: "Error", description: "Failed to fetch full asset details." });
       } finally {
           setIsModalLoading(false);
       }
   };
 
   return (
+    // ... (JSX tidak perlu diubah dari versi terakhir Anda)
     <div className="space-y-8 animate-fade-in">
-      <div className="bg-gray-800/50 p-6 rounded-2xl border border-gray-700 shadow-lg">
-        <p className="text-lg text-purple-300 mb-3">Visualize IP Provenance</p>
-        <form onSubmit={handleFetchGraph} className="flex flex-col sm:flex-row gap-4">
-          <input
-            type="text"
-            value={assetId}
-            onChange={(e) => setAssetId(e.target.value)}
-            placeholder="Paste IP Asset ID (e.g., 0x...) to generate its provenance graph..."
-            className="flex-grow p-4 bg-gray-900 border-2 border-gray-700 rounded-xl focus:outline-none focus:ring-4 focus:ring-purple-600/50 focus:border-purple-500 transition-all text-white shadow-md text-lg"
-            required
-          />
-          <button
-            type="submit"
-            disabled={isLoading}
-            className="p-4 px-8 font-bold text-white bg-purple-600 rounded-xl shadow-lg hover:bg-purple-700 transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed text-lg"
-          >
-            {isLoading ? 'Loading...' : 'Generate'}
-          </button>
-        </form>
-      </div>
+        <div className="bg-gray-800/50 p-6 rounded-2xl border border-gray-700 shadow-lg">
+            <p className="text-lg text-purple-300 mb-3">Visualize IP Provenance</p>
+            <form onSubmit={handleFetchGraph} className="flex flex-col sm:flex-row gap-4">
+                <input
+                    type="text"
+                    value={assetId}
+                    onChange={(e) => setAssetId(e.target.value)}
+                    placeholder="Paste IP Asset ID (e.g., 0x...) to generate its provenance graph..."
+                    className="flex-grow p-4 bg-gray-900 border-2 border-gray-700 rounded-xl focus:outline-none focus:ring-4 focus:ring-purple-600/50 focus:border-purple-500 transition-all text-white shadow-md text-lg"
+                    required
+                />
+                <button
+                    type="submit"
+                    disabled={isLoading}
+                    className="p-4 px-8 font-bold text-white bg-purple-600 rounded-xl shadow-lg hover:bg-purple-700 transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed text-lg"
+                >
+                    {isLoading ? 'Loading...' : 'Generate'}
+                </button>
+            </form>
+        </div>
 
       <div className="bg-gray-800/30 border border-gray-700 rounded-2xl shadow-2xl overflow-hidden min-h-[75vh] flex flex-col">
-        {isLoading && (
-          <div className="flex-grow flex items-center justify-center text-purple-400 text-xl">Generating graph...</div>
-        )}
-        {error && (
-          <div className="flex-grow flex items-center justify-center p-8 text-red-300 bg-red-900/20 text-center rounded-2xl">{error}</div>
-        )}
-        {graphData && (
-          <IPGraphVisualization 
-            data={graphData} 
-            onNodeClick={handleNodeClick} 
-            rootId={assetId.trim()}
-          />
-        )}
+        {isLoading && <div className="flex-grow flex items-center justify-center text-purple-400 text-xl">Generating Graph Structure...</div>}
+        {error && <div className="flex-grow flex items-center justify-center p-8 text-red-300 bg-red-900/20 text-center rounded-2xl">{error}</div>}
+        {graphData && <IPGraphVisualization data={graphData} onNodeClick={handleNodeClick} rootId={assetId.trim()} />}
         {!isLoading && !error && !graphData && (
           <div className="flex-grow flex flex-col items-center justify-center text-gray-500 p-10">
             <svg className="w-24 h-24 mb-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
             <h3 className="text-2xl font-bold text-gray-400">Enter an IP Asset ID to begin.</h3>
-            <p className="mt-2 max-w-md text-center">Visualize the entire chain of derivatives and licenses stemming from a root IP, powered by Story Protocol's on-chain data.</p>
+            <p className="mt-2 max-w-md text-center">Visualize the entire chain of derivatives and licenses stemming from a root IP.</p>
           </div>
         )}
       </div>

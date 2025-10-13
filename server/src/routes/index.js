@@ -4,7 +4,7 @@ const {
     getOnChainAnalyticsController,
     getRoyaltyTransactionsController,
     getTopLicenseesController,
-    getGraphLayoutController,
+    getAssetChildrenController,
 } = require('../controllers/asset.controller');
 
 const router = express.Router();
@@ -13,6 +13,8 @@ router.get('/assets/:id', getAssetDetail);
 router.get('/assets/:id/analytics', getOnChainAnalyticsController);
 router.get('/assets/:id/royalty-transactions', getRoyaltyTransactionsController);
 router.get('/assets/:id/top-licensees', getTopLicenseesController);
-router.get('/graphs/:id/layout', getGraphLayoutController);
+
+// Endpoint baru untuk ekspansi grafik dinamis
+router.get('/assets/:id/children', getAssetChildrenController);
 
 module.exports = router;

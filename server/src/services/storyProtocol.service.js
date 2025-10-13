@@ -1,8 +1,8 @@
 const axios = require('axios');
 const https = require('https');
 const { formatUnits } = require("viem");
-const cache = require('../utils/cache');
 
+// --- Konfigurasi disederhanakan ---
 const STORY_API_BASE_URL = 'https://api.storyapis.com/api/v4';
 const STORYSCAN_API_BASE_URL = 'https://www.storyscan.io/api/v2';
 
@@ -22,31 +22,8 @@ const storyScanApi = axios.create({
 });
 
 const MAX_TREE_DEPTH = 10;
-const CONCURRENCY_LIMIT = 50;
 
-async function processWithConcurrency(items, task) {
-    const results = [];
-    const queue = [...items];
-    const workers = [];
-    for (let i = 0; i < CONCURRENCY_LIMIT; i++) {
-        workers.push((async () => {
-            while (queue.length > 0) {
-                const item = queue.shift();
-                if (item) results.push(await task(item));
-            }
-        })());
-    }
-    await Promise.all(workers);
-    return results;
-}
-
-
-const checkApiKey = () => {
-    if (!storyApiKey || storyApiKey === 'YOUR_STORY_PROTOCOL_API_KEY_HERE') {
-        throw new Error("API Key Missing: Please ensure STORY_PROTOCOL_API_KEY is correctly set in your server/.env file.");
-    }
-};
-
+// Fungsi normalizeAssetData dan getIpAsset (tetap dibutuhkan)
 const normalizeAssetData = (asset) => {
     if (!asset) return null;
     const nftMetadata = asset.nftMetadata || {};
@@ -65,19 +42,102 @@ const normalizeAssetData = (asset) => {
         mediaUrl: mediaUrl,
         royaltyPolicy: asset.licenses?.[0]?.licensingConfig,
         createdAt: asset.createdAt,
+        childrenCount: asset.childrenCount || 0,
     };
 };
 
 const getIpAsset = async (ipId) => {
-    const cacheKey = `ipAsset-${ipId}`;
-    const cachedData = cache.get(cacheKey);
-    if (cachedData) return cachedData;
     const detailsResponse = await storyApi.post('/assets', { where: { ipIds: [ipId.trim()] }, includeLicenses: true });
     const asset = detailsResponse.data.data?.[0];
     if (!asset) throw new Error(`Asset with ID ${ipId.trim()} not found`);
-    const normalized = normalizeAssetData(asset);
-    cache.set(cacheKey, normalized);
-    return normalized;
+    return normalizeAssetData(asset);
+};
+
+// --- Fungsi buildRemixTree yang Asli dan Stabil ---
+const buildRemixTree = async (ipId, currentDepth = 0, visited = new Set()) => {
+    if (currentDepth >= MAX_TREE_DEPTH || visited.has(ipId)) {
+        const leafAsset = await getIpAsset(ipId).catch(() => ({ ipId, title: "Loading failed", mediaType: "ERROR" }));
+        return { ...leafAsset, children: [] };
+    }
+    visited.add(ipId);
+
+    const currentAsset = await getIpAsset(ipId);
+    
+    let allChildren = [];
+    let hasMore = true;
+    let offset = 0;
+    while (hasMore) {
+        const res = await storyApi.post('/assets/edges', { where: { parentIpId: ipId }, pagination: { limit: 200, offset } });
+        const edges = res.data.data || [];
+        if (edges.length > 0) allChildren.push(...edges);
+        hasMore = res.data.pagination?.hasMore || false;
+        offset += 200;
+    }
+
+    if (allChildren.length > 0) {
+        const childrenPromises = allChildren.map(edge => buildRemixTree(edge.childIpId, currentDepth + 1, visited));
+        currentAsset.children = await Promise.all(childrenPromises);
+    } else {
+        currentAsset.children = [];
+    }
+
+    return currentAsset;
+};
+
+
+// --- Fungsi getValueFlowData yang Asli ---
+// Ini akan menjadi satu-satunya fungsi yang dipanggil untuk membuat grafik.
+const getValueFlowData = async (startAssetId) => {
+    // 1. Bangun seluruh pohon dengan detail dasar
+    const tree = await buildRemixTree(startAssetId);
+    if (!tree) throw new Error("Could not build the initial asset tree.");
+
+    // 2. Kumpulkan semua ID unik
+    const allIpIds = new Set();
+    const traverseAndCollect = (node) => {
+        if (!node?.ipId) return;
+        allIpIds.add(node.ipId);
+        node.children?.forEach(traverseAndCollect);
+    };
+    traverseAndCollect(tree);
+
+    // 3. Ambil semua data analitik dalam satu batch besar
+    const analyticsPromises = Array.from(allIpIds).map(id => getOnChainAnalytics(id));
+    const allAnalytics = await Promise.all(analyticsPromises);
+    const analyticsMap = new Map(allAnalytics.map((analytics, i) => [Array.from(allIpIds)[i], analytics]));
+
+    // 4. Gabungkan data analitik ke dalam pohon
+    const enrichTree = (node) => {
+        if (!node?.ipId) return null;
+        const analytics = analyticsMap.get(node.ipId);
+        const firstToken = Object.keys(analytics.totalRoyaltiesPaid)[0];
+        const numericRoyalties = parseFloat(analytics.totalRoyaltiesPaid[firstToken]) || 0;
+        
+        return {
+            ...node,
+            analytics: { ...analytics, totalRoyaltiesClaimed: numericRoyalties },
+            children: node.children.map(enrichTree).filter(Boolean)
+        };
+    };
+
+    return enrichTree(tree);
+};
+
+const getAssetChildren = async (ipId) => {
+    let allEdges = [], hasMore = true, offset = 0;
+    while (hasMore) {
+        const res = await storyApi.post('/assets/edges', { where: { parentIpId: ipId }, pagination: { limit: 200, offset } });
+        const edges = res.data.data || [];
+        if (edges.length > 0) allEdges.push(...edges);
+        hasMore = res.data.pagination?.hasMore || false;
+        offset += 200;
+    }
+
+    if (allEdges.length === 0) return [];
+
+    // Ambil detail dasar untuk setiap anak secara bersamaan
+    const childrenDetails = await processWithConcurrency(allEdges, edge => getIpAsset(edge.childIpId).catch(() => null));
+    return childrenDetails.filter(Boolean); // Hapus anak yang gagal diambil
 };
 
 const getAllRoyaltyEvents = async (ipId) => {
@@ -181,7 +241,7 @@ const fetchDerivativesIdTree = async (ipId, currentDepth, visited) => {
     try {
         let allEdges = [], hasMore = true, offset = 0;
         while (hasMore) {
-            const res = await storyApi.post('/assets/edges', { where: { parentIpId: ipId }, pagination: { limit: 200, offset } });
+            const res = await storyApi.post('/assets/edges', { where: { parentIpId: ipId }, pagination: { limit: 10, offset } });
             const edges = res.data.data || [];
             if (edges.length > 0) allEdges.push(...edges);
             hasMore = res.data.pagination?.hasMore || false;
@@ -299,7 +359,11 @@ const getTopLicensees = async (ipId) => {
 module.exports = {
   getGraphLayout,
   getIpAsset, 
+  getValueFlowData,
+  buildRemixTree,
+  getAssetChildren,
   getOnChainAnalytics, 
   getRoyaltyTransactions,
   getTopLicensees,
+  getAssetChildren,
 };

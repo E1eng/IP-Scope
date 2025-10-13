@@ -5,30 +5,36 @@ import DetailRow from './DetailRow';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
-const AnalyticsPanel = ({ analytics }) => {
-    // ... (Logika komponen ini tetap sama seperti versi terakhir)
+// Komponen untuk menampilkan panel analitik on-chain
+const AnalyticsPanel = ({ asset }) => {
+    const analytics = asset?.analytics;
+
+    // Tampilkan pesan loading jika data analitik belum ada
     if (!analytics) {
         return <div className="p-4 text-center text-purple-400">Loading analytics...</div>;
     }
+    // Tampilkan pesan error jika terjadi kesalahan saat mengambil analitik
     if (analytics.errorMessage) {
         return (
-            <div className="bg-red-900/40 p-4 rounded-lg mb-4 border border-red-700">
-                <h3 className='text-md font-semibold text-red-300 mb-2'>Analytics Failed</h3>
+            <div className="bg-red-900/40 p-4 rounded-lg border border-red-700">
+                <h3 className='text-md font-semibold text-red-300'>Analytics Error</h3>
                 <p className="text-xs text-red-200 font-mono">{analytics.errorMessage}</p>
             </div>
         );
     }
+    
+    // Menggunakan struktur data 'totalRoyaltiesPaid' yang baru (object)
     const royalties = analytics.totalRoyaltiesPaid || {};
     const royaltyEntries = Object.entries(royalties);
+
     return (
-        <div className="bg-gray-800/50 p-4 rounded-lg mb-4 border border-gray-700">
+        <div className="bg-gray-800/50 p-4 rounded-lg border border-gray-700">
             <h3 className='text-md font-semibold text-purple-300 mb-3'>On-Chain Analytics</h3>
             <div className="space-y-2">
-                <DetailRow label="License Terms ID" value={analytics.licenseTermsId} />
                 <div className="flex justify-between items-center py-2 border-b border-purple-900/50">
                     <span className="text-xs font-semibold text-purple-300 uppercase tracking-wide">Dispute Status</span>
                     <span className={`text-xs font-bold px-2 py-1 rounded-full ${analytics.disputeStatus === 'Active' ? 'bg-red-500 text-white' : 'bg-green-500/20 text-green-300'}`}>
-                        {analytics.disputeStatus}
+                        {analytics.disputeStatus || 'None'}
                     </span>
                 </div>
                 {royaltyEntries.length > 0 ? (
@@ -43,16 +49,19 @@ const AnalyticsPanel = ({ analytics }) => {
     );
 };
 
+// Komponen untuk tab "Royalty Ledger"
 const RoyaltyLedgerTab = ({ ipId }) => {
-    // ... (Logika komponen ini tetap sama seperti versi terakhir)
     const [transactions, setTransactions] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState(null);
+
     useEffect(() => {
+        if (!ipId) return;
         const fetchLedger = async () => {
             setIsLoading(true);
             setError(null);
             try {
+                // Endpoint ini perlu ada di backend Anda
                 const response = await axios.get(`${API_BASE_URL}/assets/${ipId}/royalty-transactions`);
                 setTransactions(response.data || []);
             } catch (err) {
@@ -89,16 +98,21 @@ const RoyaltyLedgerTab = ({ ipId }) => {
     );
 };
 
+// Komponen untuk tab "Top Licensees"
 const TopLicenseesTab = ({ ipId }) => {
-    // ... (Logika komponen ini tetap sama seperti versi terakhir)
     const [licensees, setLicensees] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState(null);
+
     useEffect(() => {
+        if (!ipId) return;
         const fetchLicensees = async () => {
+            setIsLoading(true);
+            setError(null);
             try {
+                // Endpoint ini perlu ada di backend Anda
                 const response = await axios.get(`${API_BASE_URL}/assets/${ipId}/top-licensees`);
-                setLicensees(response.data);
+                setLicensees(response.data || []);
             } catch (err) {
                 setError("Failed to load top licensees.");
             } finally {
@@ -107,9 +121,11 @@ const TopLicenseesTab = ({ ipId }) => {
         };
         fetchLicensees();
     }, [ipId]);
+
     if (isLoading) return <div className="text-center p-4">Loading Top Licensees...</div>;
-    if (error) return <div className="text-center p-4 text-red-400">{error}</div>;
+    if (error) return <div className="text-center p-4 text-red-400 bg-red-900/30 rounded-lg">{error}</div>;
     if (licensees.length === 0) return <div className="text-center p-4 text-gray-500">No licensees found.</div>;
+    
     return (
         <div className="space-y-2 text-xs">
             {licensees.map((lic, index) => (
@@ -125,21 +141,16 @@ const TopLicenseesTab = ({ ipId }) => {
     );
 };
 
-
-const RemixDetailModal = ({ asset, onClose, analytics, isLoading }) => {
+// Komponen Utama Modal
+const RemixDetailModal = ({ asset, onClose, isLoading }) => {
   const [activeTab, setActiveTab] = useState('details');
 
-  const handleClose = () => {
-    // Tambahkan animasi fade-out
-    const modal = document.getElementById('remix-modal');
-    if (modal) {
-        modal.classList.remove('animate-fade-in');
-        modal.classList.add('animate-fade-out'); // Anda perlu menambahkan @keyframes fade-out di CSS
-    }
-    setTimeout(onClose, 200);
-  };
-  
-  // Render konten loading
+  // Efek untuk mereset tab ke 'details' setiap kali aset baru dipilih
+  useEffect(() => {
+    setActiveTab('details');
+  }, [asset?.ipId]);
+
+  // Tampilan saat memuat
   if (isLoading || !asset) {
     return (
         <div className="fixed inset-0 bg-black/70 flex justify-center items-center z-50 p-4">
@@ -151,31 +162,30 @@ const RemixDetailModal = ({ asset, onClose, analytics, isLoading }) => {
     );
   }
   
-  // Render konten error
+  // Tampilan saat terjadi error
   if (asset.isError) {
       return (
-        <div className="fixed inset-0 bg-black/70 flex justify-center items-center z-50 p-4" onClick={handleClose}>
+        <div className="fixed inset-0 bg-black/70 flex justify-center items-center z-50 p-4" onClick={onClose}>
             <div className="bg-red-900/50 border border-red-700 rounded-lg w-full max-w-lg p-6 flex flex-col" onClick={e => e.stopPropagation()}>
-                <h2 className="text-xl font-bold text-red-400 mb-2">{asset.title}</h2>
-                <p className="text-red-300 mb-4">{asset.description}</p>
+                <h2 className="text-xl font-bold text-red-400 mb-2">{asset.title || 'Error'}</h2>
+                <p className="text-red-300 mb-4">{asset.description || 'Could not load asset details.'}</p>
                 <p className="text-sm text-gray-400">Asset ID: {asset.ipId}</p>
-                <button onClick={handleClose} className="mt-4 p-3 font-bold bg-red-600 rounded-xl hover:bg-red-700 text-white">Close</button>
+                <button onClick={onClose} className="mt-4 p-3 font-bold bg-red-600 rounded-xl hover:bg-red-700 text-white">Close</button>
             </div>
         </div>
       );
   }
 
-  const formattedDate = asset.createdAt ? new Date(asset.createdAt).toLocaleDateString('en-US', {
-    year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit'
-  }) : 'N/A';
-
-  const creatorName = asset.nftMetadata?.raw?.metadata?.creators?.[0]?.name || 'Unknown Creator';
+  // Format data dengan nilai default yang informatif
+  const formattedDate = asset.createdAt ? new Date(asset.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Not Provided';
+  const creatorName = asset.nftMetadata?.raw?.metadata?.creators?.[0]?.name || 'Not Provided';
+  const mediaTypeDisplay = asset.mediaType === 'UNKNOWN' ? 'Not Specified' : asset.mediaType;
 
   return (
     <div 
       id="remix-modal"
       className="fixed inset-0 bg-black/70 backdrop-blur-sm flex justify-center items-center z-50 p-4 animate-fade-in"
-      onClick={handleClose}
+      onClick={onClose}
     >
       <div 
         className="bg-gray-900 border border-purple-800 rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden shadow-2xl"
@@ -183,8 +193,8 @@ const RemixDetailModal = ({ asset, onClose, analytics, isLoading }) => {
       >
         <header className="p-6 flex-shrink-0 border-b border-purple-900/50">
             <div className="flex justify-between items-start">
-                <h2 className="text-2xl font-bold text-white tracking-tight line-clamp-2 pr-10">{asset.title}</h2>
-                <button onClick={handleClose} className="text-gray-400 hover:text-white transition-colors">
+                <h2 className="text-2xl font-bold text-white tracking-tight line-clamp-2 pr-10">{asset.title || 'Untitled Asset'}</h2>
+                <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors">
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                 </button>
             </div>
@@ -199,12 +209,12 @@ const RemixDetailModal = ({ asset, onClose, analytics, isLoading }) => {
             <div className="pt-6">
                 {activeTab === 'details' && (
                     <div className="space-y-6">
-                        <AnalyticsPanel analytics={analytics} />
+                        <AnalyticsPanel asset={asset} />
                         <LicenseCard asset={asset} />
-                         <div className="space-y-1 pt-4 border-t border-gray-700 text-sm">
+                        <div className="space-y-1 pt-4 border-t border-gray-700 text-sm">
                             <h3 className="font-semibold text-purple-300 mb-2">Key Details</h3>
                             <DetailRow label="IP ID" value={asset.ipId} />
-                            <DetailRow label="Media Type" value={asset.mediaType} />
+                            <DetailRow label="Media Type" value={mediaTypeDisplay} />
                             <DetailRow label="Creator" value={creatorName} />
                             <DetailRow label="Date Created" value={formattedDate} />
                         </div>
@@ -215,8 +225,8 @@ const RemixDetailModal = ({ asset, onClose, analytics, isLoading }) => {
             </div>
         </div>
         <footer className="p-6 flex-shrink-0 border-t border-purple-900/50">
-            <a href={`https://portal.story.foundation/user/${asset.ipId}`} target="_blank" rel="noopener noreferrer" className="w-full text-center p-3 font-bold bg-purple-600 rounded-lg hover:bg-purple-700 transition-colors text-white">
-                View on Portal
+            <a href={`https://explorer.story.foundation/ipa/${asset.ipId}`} target="_blank" rel="noopener noreferrer" className="w-full text-center block p-3 font-bold bg-purple-600 rounded-lg hover:bg-purple-700 transition-colors text-white">
+                View on Explorer
             </a>
         </footer>
       </div>

@@ -1,27 +1,21 @@
 const express = require('express');
 const {
-    getAssetValueFlowGraph,
-    getAssetsBatchController,
-    getAssetDetailController,
-    getOnChainAnalyticsController,
+    getAssetsByOwnerController,
+    getAssetDetailsForModalController,
+    getRoyaltyTransactionsController,
+    getTopLicenseesController,
 } = require('../controllers/asset.controller');
 
 const router = express.Router();
 
-// Endpoint utama untuk memulai pembuatan grafik. 
-// Hanya mengembalikan root node dan daftar ID dari turunannya.
-router.get('/graphs/:id/value-flow', getAssetValueFlowGraph);
+// Endpoint utama untuk mengambil semua aset berdasarkan alamat pemilik
+router.get('/owner/:address/assets', getAssetsByOwnerController);
 
-// Endpoint untuk mengambil detail dari sekumpulan aset berdasarkan daftar ID.
-// Digunakan oleh frontend untuk paginasi.
-router.post('/assets/batch', getAssetsBatchController);
+// Endpoint untuk mengambil semua data yang dibutuhkan oleh modal/halaman detail
+router.get('/assets/:id/details', getAssetDetailsForModalController);
 
-// Endpoint untuk mengambil detail lengkap dari SATU aset.
-// Digunakan saat pengguna mengklik sebuah node di grafik.
-router.get('/assets/:id', getAssetDetailController);
-
-// Endpoint untuk mengambil data analitik dari SATU aset.
-// Digunakan saat pengguna mengklik sebuah node di grafik.
-router.get('/assets/:id/analytics', getOnChainAnalyticsController);
+// Endpoint untuk tab di dalam modal
+router.get('/assets/:id/royalty-transactions', getRoyaltyTransactionsController);
+router.get('/assets/:id/top-licensees', getTopLicenseesController);
 
 module.exports = router;

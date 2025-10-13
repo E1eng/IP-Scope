@@ -1,8 +1,6 @@
 import React, { useRef, useEffect } from 'react';
 import * as d3 from 'd3';
 
-// --- Komponen Ikon Dihapus dari sini ---
-
 const IPGraphVisualization = ({ data, onNodeClick, onLinkClick, rootId }) => {
     const svgRef = useRef(null);
     const containerRef = useRef(null);
@@ -51,20 +49,21 @@ const IPGraphVisualization = ({ data, onNodeClick, onLinkClick, rootId }) => {
             .on("click", (event, d) => onNodeClick(d.id))
             .call(drag(simulation));
 
+        // Lingkaran Latar Belakang untuk Efek Glow
         nodeGroup.append("circle")
             .attr("r", 22)
             .attr("fill", d => d.id === rootId ? '#FFD700' : (d.analytics?.disputeStatus === 'Active' ? '#F44336' : '#5A429C'))
             .attr("class", d => d.id === rootId ? 'animate-pulse' : '')
             .attr("fill-opacity", 0.3);
 
+        // Lingkaran Utama
         nodeGroup.append("circle")
             .attr("r", 18)
             .attr("fill", "#1E1B33")
             .attr("stroke", d => d.id === rootId ? '#FFD700' : (d.analytics?.disputeStatus === 'Active' ? '#F44336' : '#8A63D2'))
             .attr("stroke-width", 2);
             
-        // --- ▼▼▼ PERBAIKAN UTAMA DI SINI ▼▼▼ ---
-        // Menggambar path SVG secara langsung, bukan menggunakan komponen React
+        // Ikon Media (digambar langsung dengan D3)
         nodeGroup.append("path")
             .attr("d", d => {
                 switch (d.mediaType) {
@@ -75,9 +74,10 @@ const IPGraphVisualization = ({ data, onNodeClick, onLinkClick, rootId }) => {
                     default: return "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z";
                 }
             })
-            .attr("transform", "translate(-12, -12)") // Pusatkan ikon 24x24
+            .attr("transform", "translate(-12, -12)")
             .attr("fill", "#E0D5FF");
 
+        // Label Teks
         nodeGroup.append("text")
             .attr("x", 26)
             .attr("y", "0.31em")
@@ -111,12 +111,8 @@ const IPGraphVisualization = ({ data, onNodeClick, onLinkClick, rootId }) => {
         });
 
         simulation.on("tick", () => {
-            link
-                .attr("x1", d => d.source.x)
-                .attr("y1", d => d.source.y)
-                .attr("x2", d => d.target.x)
-                .attr("y2", d => d.target.y);
-
+            link.attr("x1", d => d.source.x).attr("y1", d => d.source.y)
+                .attr("x2", d => d.target.x).attr("y2", d => d.target.y);
             nodeGroup.attr("transform", d => `translate(${d.x},${d.y})`);
         });
         

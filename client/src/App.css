@@ -1,35 +1,32 @@
+/* Ganti seluruh isi file ini */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 body {
-  font-family: 'Inter', 'Montserrat', 'Poppins', 'Segoe UI', Arial, sans-serif;
-  background: linear-gradient(135deg, #18122B 0%, #22223B 100%);
-  color: #e0e0e0;
+  font-family: 'Inter', sans-serif;
+  background-color: #111827; /* bg-gray-900 */
+  color: #d1d5db; /* text-gray-300 */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-.card, .modal {
-  border-radius: 1.25rem;
-  box-shadow: 0 8px 32px 0 rgba(44, 0, 90, 0.25);
-  background: #232136;
-  border: 1px solid #3a225d;
-  transition: box-shadow 0.3s, border 0.3s;
+.animate-fade-in {
+  animation: fadeIn 0.5s ease-out;
 }
 
-.card:hover, .modal:hover {
-  box-shadow: 0 12px 40px 0 rgba(120, 0, 180, 0.35);
-  border-color: #7c3aed;
+.animate-fade-out {
+  animation: fadeOut 0.2s ease-in forwards;
 }
 
-.custom-scrollbar::-webkit-scrollbar {
-  width: 8px;
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
 }
-.custom-scrollbar::-webkit-scrollbar-track {
-  background: #232136;
-  border-radius: 10px;
-}
-.custom-scrollbar::-webkit-scrollbar-thumb {
-  background: #7c3aed;
-  border-radius: 10px;
-}
-.custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: #a78bfa;
+
+@keyframes fadeOut {
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(10px); }
 }
 
 .animate-gradient-x {
@@ -42,32 +39,17 @@ body {
   100% { background-position: 0% 50%; }
 }
 
-.animate-fade-in {
-  animation: fadeIn 0.7s cubic-bezier(0.4,0,0.2,1);
-}
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(20px); }
-  to { opacity: 1; transform: none; }
-}
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-/* Custom Scrollbar for modern analytic look */
+/* Custom Scrollbar */
 .custom-scrollbar::-webkit-scrollbar {
   width: 8px;
 }
-
 .custom-scrollbar::-webkit-scrollbar-track {
-  background: #1f2937; /* bg-gray-800 */
-  border-radius: 10px;
+  background: transparent;
 }
-
 .custom-scrollbar::-webkit-scrollbar-thumb {
   background: #4b5563; /* bg-gray-600 */
   border-radius: 10px;
 }
-
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background: #6b7280; /* bg-gray-500 */
 }

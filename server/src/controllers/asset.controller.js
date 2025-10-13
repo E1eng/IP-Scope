@@ -1,22 +1,5 @@
+// ... (impor dan fungsi-fungsi lain tetap sama)
 const storyProtocolService = require('../services/storyProtocol.service');
-
-// ... (searchAssets, getAssetDetail, dll. tetap sama) ...
-const searchAssets = async (req, res) => {
-  const { query, mediaType, sortBy, limit, offset } = req.query;
-  if (!query) {
-    return res.status(400).json({ message: 'Query parameter is required' });
-  }
-  try {
-    const data = await storyProtocolService.searchIpAssets(query, mediaType, sortBy, limit, offset);
-    res.status(200).json(data);
-  } catch (error) {
-    console.error('Error in search controller:', error.message);
-    const errorMessage = error.message.includes('API Key')
-      ? "API Key Error: Please check your STORY_PROTOCOL_API_KEY in the server/.env file."
-      : `Backend Error: ${error.message}`;
-    res.status(500).json({ message: errorMessage });
-  }
-};
 
 const getAssetDetail = async (req, res) => {
     const { id } = req.params;
@@ -29,35 +12,6 @@ const getAssetDetail = async (req, res) => {
     } catch (error) {
         console.error('Error in asset detail controller:', error.message);
         res.status(500).json({ message: error.message.includes('API Key') ? error.message : `Failed to fetch asset detail for ID ${id}.` });
-    }
-};
-
-const getAssetRemixTree = async (req, res) => {
-  const { id } = req.params;
-  if (!id) {
-    return res.status(400).json({ message: 'Asset ID is required' });
-  }
-  try {
-    const treeData = await storyProtocolService.buildRemixTree(id);
-    res.status(200).json(treeData);
-  } catch (error) {
-    console.error('Error in tree controller:', error.message);
-    const errorMessage = error.message.includes('API Key') ? error.message : `Failed to fetch remix tree data for ID ${id}.`;
-    res.status(500).json({ message: errorMessage });
-  }
-};
-
-const getOnChainAnalyticsController = async (req, res) => {
-    const { id } = req.params;
-    if (!id) {
-        return res.status(400).json({ message: 'Asset ID is required' });
-    }
-    try {
-        const analytics = await storyProtocolService.getOnChainAnalytics(id);
-        res.status(200).json(analytics);
-    } catch (error) {
-        console.error('Error in analytics controller:', error.message);
-        res.status(500).json({ message: `Failed to fetch analytics: ${error.message}` });
     }
 };
 
@@ -74,8 +28,17 @@ const getAssetValueFlowGraph = async (req, res) => {
     res.status(500).json({ message: `Failed to fetch value flow graph: ${error.message}` });
   }
 };
-// --- CONTROLLER BARU ---
-
+const getGraphLayoutController = async (req, res) => {
+    const { id } = req.params;
+    if (!id) return res.status(400).json({ message: 'Asset ID is required' });
+    try {
+        const layoutData = await storyProtocolService.getGraphLayout(id);
+        res.status(200).json(layoutData);
+    } catch (error) {
+        console.error('Error in graph layout controller:', error.message);
+        res.status(500).json({ message: `Failed to fetch graph layout: ${error.message}` });
+    }
+};
 const getRoyaltyTransactionsController = async (req, res) => {
     const { id } = req.params;
     if (!id) return res.status(400).json({ message: 'Asset ID is required' });
@@ -100,12 +63,25 @@ const getTopLicenseesController = async (req, res) => {
     }
 };
 
+const getOnChainAnalyticsController = async (req, res) => {
+    const { id } = req.params;
+    if (!id) {
+        return res.status(400).json({ message: 'Asset ID is required' });
+    }
+    try {
+        const analytics = await storyProtocolService.getOnChainAnalytics(id);
+        res.status(200).json(analytics);
+    } catch (error) {
+        console.error('Error in analytics controller:', error.message);
+        res.status(500).json({ message: `Failed to fetch analytics: ${error.message}` });
+    }
+};
+
 module.exports = {
-  searchAssets,
   getAssetDetail,
-  getAssetRemixTree,
-  getOnChainAnalyticsController,
   getAssetValueFlowGraph,
+  getOnChainAnalyticsController,
   getRoyaltyTransactionsController,
   getTopLicenseesController,
+  getGraphLayoutController,
 };

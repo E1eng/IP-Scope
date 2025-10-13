@@ -11,40 +11,29 @@ function IPGraphPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   
-  const [selectedChildAsset, setSelectedChildAsset] = useState(null);
-  const [isChildLoading, setIsChildLoading] = useState(false);
-  const [analyticsData, setAnalyticsData] = useState(null); 
-  const [selectedType, setSelectedType] = useState('node');
+  const [selectedAsset, setSelectedAsset] = useState(null);
+  const [isModalLoading, setIsModalLoading] = useState(false);
+  const [analyticsData, setAnalyticsData] = useState(null);
 
-  // ▼▼▼ FUNGSI INI DIPERBARUI UNTUK MENERUSKAN DATA ANALYTICS ▼▼▼
-  const transformTreeToGraph = (root) => {
+  const transformTreeToGraph = (root, rootId) => {
     const nodes = [];
     const links = [];
     const nodeMap = new Map();
 
     const traverse = (node, parentId = null) => {
       if (!node || !node.ipId || nodeMap.has(node.ipId)) return;
-
       const d3Node = {
         id: node.ipId,
         title: node.title,
         mediaType: node.mediaType,
-        isRoot: node.ipId === assetId.trim(),
-        analytics: node.analytics, // <-- BUG KRITIS DIPERBAIKI DI SINI
+        isRoot: node.ipId === rootId,
+        analytics: node.analytics,
       };
-
       nodes.push(d3Node);
       nodeMap.set(node.ipId, d3Node);
-
-      if (parentId) {
-        links.push({ source: parentId, target: node.ipId });
-      }
-
-      if (node.children) {
-        node.children.forEach(child => traverse(child, node.ipId));
-      }
+      if (parentId) links.push({ source: parentId, target: node.ipId });
+      if (node.children) node.children.forEach(child => traverse(child, node.ipId));
     };
-    
     traverse(root);
     return { nodes, links };
   };
@@ -56,119 +45,103 @@ function IPGraphPage() {
     setIsLoading(true);
     setGraphData(null);
     setError(null);
-    setSelectedChildAsset(null);
+    setSelectedAsset(null);
     setAnalyticsData(null);
 
     try {
-      const response = await axios.get(
-        `${API_BASE_URL}/graphs/${assetId.trim()}/value-flow`
-      );
-      
+      const response = await axios.get(`${API_BASE_URL}/graphs/${assetId.trim()}/layout`);
       if (response.data) {
-        const { nodes, links } = transformTreeToGraph(response.data);
+        const { nodes, links } = transformTreeToGraph(response.data, assetId.trim());
         setGraphData({ nodes, links });
       } else {
         throw new Error("API returned no data");
       }
-
     } catch (err) {
-      setError(
-        err.response?.data?.message || 'Failed to load IP Graph. Check backend connection or API Key.'
-      );
-      console.error('IP Graph Fetch Error:', err.response ? err.response.data : err.message);
+      setError(err.response?.data?.message || 'Failed to load IP Graph. Check IP ID or backend connection.');
+      console.error('IP Graph Fetch Error:', err);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleGraphInteraction = async (id, type) => {
-      setSelectedChildAsset(null);
+  const handleNodeClick = async (ipId) => {
+      setIsModalLoading(true);
+      setSelectedAsset({ ipId }); // Tampilkan modal loading dengan ID
       setAnalyticsData(null);
-      setIsChildLoading(true);
-      setSelectedType(type);
 
       try {
-          const assetResponse = await axios.get(`${API_BASE_URL}/assets/${id}`);
-          const analyticsResponse = await axios.get(`${API_BASE_URL}/assets/${id}/analytics`);
-          
-          setSelectedChildAsset(assetResponse.data);
+          const [assetResponse, analyticsResponse] = await Promise.all([
+              axios.get(`${API_BASE_URL}/assets/${ipId}`),
+              axios.get(`${API_BASE_URL}/assets/${id}/analytics`)
+          ]);
+          setSelectedAsset(assetResponse.data);
           setAnalyticsData(analyticsResponse.data);
-          
       } catch (err) {
-          console.error(`Failed to fetch ${type} details:`, err.response ? err.response.data : err.message);
-          setSelectedChildAsset({ 
-            ipId: id, 
-            title: `Error fetching ${type} details`, 
-            description: "Failed to load full data for this component.", 
+          console.error(`Failed to fetch node details:`, err);
+          setSelectedAsset({ 
+            ipId, 
+            title: `Error Fetching Details`, 
+            description: "Could not load full data for this component.", 
             isError: true 
           });
       } finally {
-          setIsChildLoading(false);
+          setIsModalLoading(false);
       }
   };
 
-  const handleNodeClick = (ipId) => handleGraphInteraction(ipId, 'node');
-  const handleLinkClick = (ipId) => handleGraphInteraction(ipId, 'link');
-
   return (
-    <div className="space-y-10 animate-fade-in">
-      <div className="sticky top-0 z-30 bg-gradient-to-r from-purple-900/40 via-gray-900/80 to-blue-900/40 p-6 rounded-2xl border border-purple-900 shadow-xl mb-8">
-        <h2 className="text-3xl font-extrabold text-purple-300 tracking-tight mb-2">IP Graph Visualization</h2>
-        <p className='text-blue-400'>Input an IP ID to visualize its entire remix provenance and value flow as an interactive graph.</p>
+    <div className="space-y-8 animate-fade-in">
+      <div className="bg-gray-800/50 p-6 rounded-2xl border border-gray-700 shadow-lg">
+        <p className="text-lg text-purple-300 mb-3">Visualize IP Provenance</p>
+        <form onSubmit={handleFetchGraph} className="flex flex-col sm:flex-row gap-4">
+          <input
+            type="text"
+            value={assetId}
+            onChange={(e) => setAssetId(e.target.value)}
+            placeholder="Paste IP Asset ID (e.g., 0x...) to generate its provenance graph..."
+            className="flex-grow p-4 bg-gray-900 border-2 border-gray-700 rounded-xl focus:outline-none focus:ring-4 focus:ring-purple-600/50 focus:border-purple-500 transition-all text-white shadow-md text-lg"
+            required
+          />
+          <button
+            type="submit"
+            disabled={isLoading}
+            className="p-4 px-8 font-bold text-white bg-purple-600 rounded-xl shadow-lg hover:bg-purple-700 transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed text-lg"
+          >
+            {isLoading ? 'Loading...' : 'Generate'}
+          </button>
+        </form>
       </div>
-      <form onSubmit={handleFetchGraph} className="flex flex-col sm:flex-row gap-6 mb-8">
-        <input
-          type="text"
-          value={assetId}
-          onChange={(e) => setAssetId(e.target.value)}
-          placeholder="Paste IP Asset ID (e.g., 0x...) here..."
-          className="flex-grow p-4 bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 border border-purple-900 rounded-xl focus:outline-none focus:ring-4 focus:ring-purple-600/50 focus:border-purple-500 transition-all text-white shadow-lg"
-          required
-        />
-        <button
-          type="submit"
-          disabled={isLoading || !assetId.trim()}
-          className="p-4 px-8 font-extrabold text-white bg-gradient-to-r from-pink-600 to-purple-600 rounded-xl shadow-xl hover:from-pink-700 hover:to-purple-700 transition-colors disabled:bg-gray-700 disabled:cursor-not-allowed text-base"
-        >
-          {isLoading ? 'Loading Graph...' : 'Generate Graph'}
-        </button>
-      </form>
-      <div className="bg-gradient-to-br from-gray-950 via-gray-900 to-gray-800 border border-purple-900 rounded-2xl shadow-2xl overflow-hidden min-h-[70vh]">
+
+      <div className="bg-gray-800/30 border border-gray-700 rounded-2xl shadow-2xl overflow-hidden min-h-[75vh] flex flex-col">
         {isLoading && (
-          <div className="flex items-center justify-center p-12 text-purple-400">Loading graph data...</div>
+          <div className="flex-grow flex items-center justify-center text-purple-400 text-xl">Generating graph...</div>
         )}
         {error && (
-          <div className="p-8 text-red-300 bg-red-900/30 rounded-2xl">Error: {error}</div>
+          <div className="flex-grow flex items-center justify-center p-8 text-red-300 bg-red-900/20 text-center rounded-2xl">{error}</div>
         )}
-        {graphData && graphData.nodes.length > 0 && (
+        {graphData && (
           <IPGraphVisualization 
             data={graphData} 
             onNodeClick={handleNodeClick} 
-            onLinkClick={handleLinkClick}
             rootId={assetId.trim()}
           />
         )}
         {!isLoading && !error && !graphData && (
-          <div className="flex items-center justify-center h-[70vh] text-gray-500">
-            Enter an IP Asset ID above to begin visualization.
+          <div className="flex-grow flex flex-col items-center justify-center text-gray-500 p-10">
+            <svg className="w-24 h-24 mb-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+            <h3 className="text-2xl font-bold text-gray-400">Enter an IP Asset ID to begin.</h3>
+            <p className="mt-2 max-w-md text-center">Visualize the entire chain of derivatives and licenses stemming from a root IP, powered by Story Protocol's on-chain data.</p>
           </div>
         )}
       </div>
-      {selectedChildAsset && !isChildLoading && (
+
+      {(selectedAsset || isModalLoading) && (
         <RemixDetailModal
-          asset={selectedChildAsset}
-          onClose={() => { setSelectedChildAsset(null); setAnalyticsData(null); }}
+          asset={selectedAsset}
+          onClose={() => setSelectedAsset(null)}
           analytics={analyticsData}
-          interactionType={selectedType}
+          isLoading={isModalLoading}
         />
-      )}
-      {isChildLoading && (
-        <div className="fixed inset-0 bg-black bg-opacity-75 flex justify-center items-center z-50 p-4">
-          <div className="p-6 bg-gradient-to-br from-purple-900 via-gray-900 to-blue-900 rounded-2xl text-purple-400 flex items-center shadow-xl">
-            <div className="animate-spin h-5 w-5 mr-3 border-2 border-purple-400 border-t-transparent rounded-full"></div>
-            Loading Asset Details...
-          </div>
-        </div>
       )}
     </div>
   );

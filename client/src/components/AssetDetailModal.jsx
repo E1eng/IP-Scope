@@ -1,16 +1,29 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import axios from 'axios'; // Pastikan axios diimpor
 import IPGraphVisualization from './IPGraphVisualization';
 import DetailRow from './DetailRow';
 import LicenseCard from './LicenseCard';
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL; // Definisikan API_BASE_URL
+
 const transformTreeToGraph = (root, startAssetId) => {
+    // ... (Fungsi ini tetap sama)
     const nodes = [];
     const links = [];
     const nodeMap = new Map();
 
     const traverse = (node, parentId = null) => {
       if (!node || !node.ipId || nodeMap.has(node.ipId)) return;
-      const d3Node = { id: node.ipId, title: node.title, mediaType: node.mediaType, isRoot: node.ipId === startAssetId };
+      
+      // Ambil analytics dari node yang sudah diperkaya
+      const d3Node = { 
+          id: node.ipId, 
+          title: node.title, 
+          mediaType: node.mediaType, 
+          isRoot: node.ipId === startAssetId,
+          analytics: node.analytics 
+      };
+
       nodes.push(d3Node);
       nodeMap.set(node.ipId, d3Node);
       if (parentId) {
@@ -25,9 +38,13 @@ const transformTreeToGraph = (root, startAssetId) => {
     return { nodes, links };
 };
 
-const AssetDetailModal = ({ asset, onClose, onViewTree, remixTreeData, isTreeLoading }) => {
+const AssetDetailModal = ({ asset, onClose }) => {
   const [show, setShow] = useState(false);
   const [view, setView] = useState('details');
+  // --- State baru untuk menangani data grafik di modal ---
+  const [remixTreeData, setRemixTreeData] = useState(null);
+  const [isTreeLoading, setIsTreeLoading] = useState(false);
+
 
   useEffect(() => {
     const timer = setTimeout(() => setShow(true), 50); 
@@ -40,10 +57,21 @@ const AssetDetailModal = ({ asset, onClose, onViewTree, remixTreeData, isTreeLoa
     setTimeout(onClose, 300); 
   };
   
-  const handleViewTreeClick = () => {
+  // --- ▼▼▼ FUNGSI INI DIPERBARUI TOTAL ▼▼▼ ---
+  const handleViewTreeClick = async () => {
       setView('tree');
       if (!remixTreeData && !isTreeLoading) {
-          onViewTree(asset.ipId);
+          setIsTreeLoading(true);
+          try {
+              // Gunakan endpoint yang cepat dan benar
+              const response = await axios.get(`${API_BASE_URL}/graphs/${asset.ipId}/value-flow`);
+              setRemixTreeData(response.data);
+          } catch (error) {
+              console.error("Failed to fetch remix graph from modal", error);
+              setRemixTreeData({ error: "Failed to load remix graph." });
+          } finally {
+              setIsTreeLoading(false);
+          }
       }
   }
 
@@ -53,6 +81,7 @@ const AssetDetailModal = ({ asset, onClose, onViewTree, remixTreeData, isTreeLoa
 
   const graphData = useMemo(() => {
       if (view === 'tree' && remixTreeData && !remixTreeData.error) {
+          // Kirim IP ID aset saat ini sebagai root
           return transformTreeToGraph(remixTreeData, asset.ipId);
       }
       return null;
@@ -60,10 +89,10 @@ const AssetDetailModal = ({ asset, onClose, onViewTree, remixTreeData, isTreeLoa
 
   if (!asset) return null;
 
-  const formattedDate = asset.createdAt ? new Date(asset.createdAt).toLocaleDateString('id-ID', {
+  const formattedDate = asset.createdAt ? new Date(asset.createdAt).toLocaleDateString('en-US', {
     year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit'
-  }) : null;
-  const creatorName = asset.nftMetadata?.raw?.metadata?.creators?.[0]?.name;
+  }) : 'N/A';
+  const creatorName = asset.nftMetadata?.raw?.metadata?.creators?.[0]?.name || 'Unknown Creator';
 
   return (
     <div 

@@ -1,7 +1,8 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom'; // Import kembali
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import Navbar from './components/Navbar';
 import ExplorerPage from './pages/ExplorerPage';
+import AssetDetailPage from './pages/AssetDetailPage'; // Import AssetDetailPage
 
 function App() {
   return (
@@ -13,6 +14,8 @@ function App() {
                 {/* Gunakan Routes dan Route untuk halaman utama */}
                 <Routes>
                     <Route path="/" element={<ExplorerPage />} />
+                    {/* Tambahkan route untuk halaman detail aset */}
+                    <Route path="/asset/:id" element={<AssetDetailPage />} />
                 </Routes>
             </main>
         </div>

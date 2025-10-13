@@ -1,11 +1,11 @@
 const axios = require('axios');
 const https = require('https');
 const { formatUnits } = require("viem");
+const cache = require('../utils/cache');
 
-// --- Konfigurasi disederhanakan ---
+// --- Configuration ---
 const STORY_API_BASE_URL = 'https://api.storyapis.com/api/v4';
 const STORYSCAN_API_BASE_URL = 'https://www.storyscan.io/api/v2';
-
 const storyApiKey = process.env.STORY_PROTOCOL_API_KEY;
 const httpsAgent = new https.Agent({ keepAlive: true });
 
@@ -21,129 +21,140 @@ const storyScanApi = axios.create({
     httpsAgent: httpsAgent,
 });
 
-const MAX_TREE_DEPTH = 10;
+const MAX_TREE_DEPTH = 5; // Reduced for performance
+const MAX_CONCURRENT_REQUESTS = 5; // Rate limit: 300 RPS means ~5 concurrent
+const DELAY_BETWEEN_BATCHES = 100; // ms delay between batches
 
-// Fungsi normalizeAssetData dan getIpAsset (tetap dibutuhkan)
+// --- Rate Limiting Helper ---
+const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+// --- Concurrency Control ---
+const processWithConcurrency = async (items, asyncFn, concurrency = MAX_CONCURRENT_REQUESTS) => {
+    const results = [];
+    for (let i = 0; i < items.length; i += concurrency) {
+        const batch = items.slice(i, i + concurrency);
+        const batchResults = await Promise.all(batch.map(item => asyncFn(item).catch(e => null)));
+        results.push(...batchResults);
+        if (i + concurrency < items.length) {
+            await delay(DELAY_BETWEEN_BATCHES);
+        }
+    }
+    return results;
+};
+
+// --- Normalize Asset Data ---
 const normalizeAssetData = (asset) => {
     if (!asset) return null;
     const nftMetadata = asset.nftMetadata || {};
     const mediaUrl = nftMetadata.image?.url || nftMetadata.image?.thumbnailUrl || null;
     let mediaType = nftMetadata.mediaType ? nftMetadata.mediaType.toUpperCase() : 'UNKNOWN';
+    
     if (mediaType === 'UNKNOWN' && mediaUrl) {
         if (/\.(jpg|jpeg|png|gif|webp|svg)$/i.test(mediaUrl)) mediaType = 'IMAGE';
         else if (/\.(mp4|webm|mov)$/i.test(mediaUrl)) mediaType = 'VIDEO';
         else if (/\.(mp3|wav|ogg|flac)$/i.test(mediaUrl)) mediaType = 'AUDIO';
     }
+    
     return {
         ipId: asset.ipId,
         title: asset.name || 'Untitled Asset',
         description: asset.description || 'No description.',
         mediaType: mediaType,
         mediaUrl: mediaUrl,
+        nftMetadata: nftMetadata,
+        pilTerms: asset.licenses?.[0]?.pilTerms,
         royaltyPolicy: asset.licenses?.[0]?.licensingConfig,
         createdAt: asset.createdAt,
         childrenCount: asset.childrenCount || 0,
+        parentsCount: asset.parentsCount || 0,
+        parents: asset.parents || [],
     };
 };
 
+// --- Get Single IP Asset ---
 const getIpAsset = async (ipId) => {
-    const detailsResponse = await storyApi.post('/assets', { where: { ipIds: [ipId.trim()] }, includeLicenses: true });
+    const cacheKey = `asset-${ipId}`;
+    const cached = cache.get(cacheKey);
+    if (cached) return cached;
+
+    const detailsResponse = await storyApi.post('/assets', { 
+        where: { ipIds: [ipId.trim()] }, 
+        includeLicenses: true 
+    });
+    
     const asset = detailsResponse.data.data?.[0];
     if (!asset) throw new Error(`Asset with ID ${ipId.trim()} not found`);
-    return normalizeAssetData(asset);
-};
-
-// --- Fungsi buildRemixTree yang Asli dan Stabil ---
-const buildRemixTree = async (ipId, currentDepth = 0, visited = new Set()) => {
-    if (currentDepth >= MAX_TREE_DEPTH || visited.has(ipId)) {
-        const leafAsset = await getIpAsset(ipId).catch(() => ({ ipId, title: "Loading failed", mediaType: "ERROR" }));
-        return { ...leafAsset, children: [] };
-    }
-    visited.add(ipId);
-
-    const currentAsset = await getIpAsset(ipId);
     
-    let allChildren = [];
-    let hasMore = true;
-    let offset = 0;
-    while (hasMore) {
-        const res = await storyApi.post('/assets/edges', { where: { parentIpId: ipId }, pagination: { limit: 200, offset } });
-        const edges = res.data.data || [];
-        if (edges.length > 0) allChildren.push(...edges);
-        hasMore = res.data.pagination?.hasMore || false;
-        offset += 200;
-    }
-
-    if (allChildren.length > 0) {
-        const childrenPromises = allChildren.map(edge => buildRemixTree(edge.childIpId, currentDepth + 1, visited));
-        currentAsset.children = await Promise.all(childrenPromises);
-    } else {
-        currentAsset.children = [];
-    }
-
-    return currentAsset;
+    const normalized = normalizeAssetData(asset);
+    cache.set(cacheKey, normalized);
+    return normalized;
 };
 
-
-// --- Fungsi getValueFlowData yang Asli ---
-// Ini akan menjadi satu-satunya fungsi yang dipanggil untuk membuat grafik.
-const getValueFlowData = async (startAssetId) => {
-    // 1. Bangun seluruh pohon dengan detail dasar
-    const tree = await buildRemixTree(startAssetId);
-    if (!tree) throw new Error("Could not build the initial asset tree.");
-
-    // 2. Kumpulkan semua ID unik
-    const allIpIds = new Set();
-    const traverseAndCollect = (node) => {
-        if (!node?.ipId) return;
-        allIpIds.add(node.ipId);
-        node.children?.forEach(traverseAndCollect);
-    };
-    traverseAndCollect(tree);
-
-    // 3. Ambil semua data analitik dalam satu batch besar
-    const analyticsPromises = Array.from(allIpIds).map(id => getOnChainAnalytics(id));
-    const allAnalytics = await Promise.all(analyticsPromises);
-    const analyticsMap = new Map(allAnalytics.map((analytics, i) => [Array.from(allIpIds)[i], analytics]));
-
-    // 4. Gabungkan data analitik ke dalam pohon
-    const enrichTree = (node) => {
-        if (!node?.ipId) return null;
-        const analytics = analyticsMap.get(node.ipId);
-        const firstToken = Object.keys(analytics.totalRoyaltiesPaid)[0];
-        const numericRoyalties = parseFloat(analytics.totalRoyaltiesPaid[firstToken]) || 0;
-        
-        return {
-            ...node,
-            analytics: { ...analytics, totalRoyaltiesClaimed: numericRoyalties },
-            children: node.children.map(enrichTree).filter(Boolean)
-        };
-    };
-
-    return enrichTree(tree);
-};
-
+// --- Get Asset Children ---
 const getAssetChildren = async (ipId) => {
+    const cacheKey = `children-${ipId}`;
+    const cached = cache.get(cacheKey);
+    if (cached) return cached;
+
     let allEdges = [], hasMore = true, offset = 0;
+    
     while (hasMore) {
-        const res = await storyApi.post('/assets/edges', { where: { parentIpId: ipId }, pagination: { limit: 200, offset } });
+        const res = await storyApi.post('/assets/edges', { 
+            where: { parentIpId: ipId }, 
+            pagination: { limit: 200, offset } 
+        });
         const edges = res.data.data || [];
         if (edges.length > 0) allEdges.push(...edges);
         hasMore = res.data.pagination?.hasMore || false;
         offset += 200;
+        await delay(50); // Small delay between pagination
     }
 
-    if (allEdges.length === 0) return [];
+    if (allEdges.length === 0) {
+        cache.set(cacheKey, []);
+        return [];
+    }
 
-    // Ambil detail dasar untuk setiap anak secara bersamaan
-    const childrenDetails = await processWithConcurrency(allEdges, edge => getIpAsset(edge.childIpId).catch(() => null));
-    return childrenDetails.filter(Boolean); // Hapus anak yang gagal diambil
+    const childrenDetails = await processWithConcurrency(
+        allEdges, 
+        edge => getIpAsset(edge.childIpId).catch(() => null)
+    );
+    
+    const filtered = childrenDetails.filter(Boolean);
+    cache.set(cacheKey, filtered);
+    return filtered;
 };
 
+// --- Get Dispute Status ---
+const getDisputeStatus = async (ipId) => {
+    const cacheKey = `dispute-${ipId}`;
+    const cached = cache.get(cacheKey);
+    if (cached) return cached;
+
+    try {
+        const response = await storyApi.post('/transactions', { 
+            where: { 
+                ipIds: [ipId], 
+                eventTypes: ["DisputeRaised", "DisputeResolved", "DisputeCancelled"] 
+            }, 
+            orderBy: "blockNumber", 
+            orderDirection: "desc", 
+            pagination: { limit: 1 } 
+        });
+        
+        const status = response.data.data?.[0]?.eventType === 'DisputeRaised' ? "Active" : "None";
+        cache.set(cacheKey, status);
+        return status;
+    } catch (error) {
+        return "Error";
+    }
+};
+
+// --- Get All Royalty Events ---
 const getAllRoyaltyEvents = async (ipId) => {
     const cacheKey = `royaltyEvents-${ipId}`;
-    const cachedData = cache.get(cacheKey);
-    if (cachedData) return cachedData;
+    const cached = cache.get(cacheKey);
+    if (cached) return cached;
 
     let allEvents = [];
     let hasMore = true;
@@ -160,12 +171,14 @@ const getAllRoyaltyEvents = async (ipId) => {
         if (fetched.length > 0) allEvents.push(...fetched);
         hasMore = response.data.pagination?.hasMore || false;
         offset += limit;
+        await delay(50);
     }
     
     cache.set(cacheKey, allEvents);
     return allEvents;
 };
 
+// --- Get Royalty History and Value ---
 const getRoyaltyHistoryAndValue = async (ipId) => {
     const allEvents = await getAllRoyaltyEvents(ipId);
     if (allEvents.length === 0) return { totalValuesByToken: {}, eventCount: 0 };
@@ -174,11 +187,14 @@ const getRoyaltyHistoryAndValue = async (ipId) => {
         const cacheKey = `txDetail-${event.txHash}`;
         const cachedTx = cache.get(cacheKey);
         if (cachedTx) return { data: cachedTx };
+        
         try {
             const res = await storyScanApi.get(`/transactions/${event.txHash}`);
             cache.set(cacheKey, res.data);
             return res;
-        } catch (e) { return null; }
+        } catch (e) { 
+            return null; 
+        }
     });
     
     const totalsByToken = {};
@@ -204,11 +220,7 @@ const getRoyaltyHistoryAndValue = async (ipId) => {
     return { totalValuesByToken: totalsByToken, eventCount: allEvents.length };
 };
 
-const getDisputeStatus = async (ipId) => {
-    const response = await storyApi.post('/transactions', { where: { ipIds: [ipId], eventTypes: ["DisputeRaised", "DisputeResolved", "DisputeCancelled"] }, orderBy: "blockNumber", orderDirection: "desc", pagination: { limit: 1 } });
-    return response.data.data?.[0]?.eventType === 'DisputeRaised' ? "Active" : "None";
-};
-
+// --- Get On-Chain Analytics ---
 const getOnChainAnalytics = async (ipId) => {
     try {
         const [assetDetails, royaltyData, disputeStatus] = await Promise.all([
@@ -217,7 +229,9 @@ const getOnChainAnalytics = async (ipId) => {
             getDisputeStatus(ipId),
         ]);
 
-        const royaltyRate = assetDetails.royaltyPolicy?.rate ? (assetDetails.royaltyPolicy.rate / 10000).toFixed(2) : 'N/A';
+        const royaltyRate = assetDetails.royaltyPolicy?.rate 
+            ? (assetDetails.royaltyPolicy.rate / 10000).toFixed(2) 
+            : 'N/A';
 
         return {
             licenseTermsId: assetDetails.royaltyPolicy?.address || `Policy for ${ipId.substring(0, 8)}...`,
@@ -226,89 +240,127 @@ const getOnChainAnalytics = async (ipId) => {
             disputeStatus: disputeStatus,
         };
     } catch (error) {
-        console.error(`Error fetching combined analytics for ${ipId}:`, error.message);
+        console.error(`Error fetching analytics for ${ipId}:`, error.message);
         return {
-            licenseTermsId: "Error", royaltySplit: "Error", totalRoyaltiesPaid: {}, disputeStatus: "Error",
+            licenseTermsId: "Error", 
+            royaltySplit: "Error", 
+            totalRoyaltiesPaid: {}, 
+            disputeStatus: "Error",
             errorMessage: error.message
         };
     }
 };
 
-const fetchDerivativesIdTree = async (ipId, currentDepth, visited) => {
-    if (currentDepth >= MAX_TREE_DEPTH || visited.has(ipId)) return { ipId, children: [] };
+// --- Build Remix Tree (Recursive with depth limit) ---
+const buildRemixTree = async (ipId, currentDepth = 0, visited = new Set()) => {
+    if (currentDepth >= MAX_TREE_DEPTH || visited.has(ipId)) {
+        const leafAsset = await getIpAsset(ipId).catch(() => ({ 
+            ipId, 
+            title: "Loading failed", 
+            mediaType: "ERROR" 
+        }));
+        return { ...leafAsset, children: [] };
+    }
     visited.add(ipId);
-    const node = { ipId, children: [] };
-    try {
-        let allEdges = [], hasMore = true, offset = 0;
-        while (hasMore) {
-            const res = await storyApi.post('/assets/edges', { where: { parentIpId: ipId }, pagination: { limit: 10, offset } });
-            const edges = res.data.data || [];
-            if (edges.length > 0) allEdges.push(...edges);
-            hasMore = res.data.pagination?.hasMore || false;
-            offset += 200;
-        }
-        if (allEdges.length > 0) {
-            node.children = await processWithConcurrency(allEdges, edge => fetchDerivativesIdTree(edge.childIpId, currentDepth + 1, visited));
-        }
-    } catch (error) { console.error(`Error fetching derivatives for ${ipId}:`, error.message); }
-    return node;
+
+    const currentAsset = await getIpAsset(ipId);
+    const children = await getAssetChildren(ipId);
+
+    if (children.length > 0) {
+        const childrenPromises = children.map(child => 
+            buildRemixTree(child.ipId, currentDepth + 1, visited)
+        );
+        currentAsset.children = await Promise.all(childrenPromises);
+    } else {
+        currentAsset.children = [];
+    }
+
+    return currentAsset;
 };
 
-const getGraphLayout = async (startAssetId) => {
-    const idTree = await fetchDerivativesIdTree(startAssetId, 0, new Set());
-    const allIpIds = new Set();
-    const traverse = (node) => { allIpIds.add(node.ipId); node.children?.forEach(traverse); };
-    traverse(idTree);
-
-    const ipIdArray = Array.from(allIpIds);
-    const [assetDetails, disputeStatuses] = await Promise.all([
-        processWithConcurrency(ipIdArray, id => getIpAsset(id).catch(() => null)),
-        processWithConcurrency(ipIdArray, id => getDisputeStatus(id).catch(() => 'Error'))
-    ]);
+// --- Get Value Flow Data (Main Graph Function) ---
+const getValueFlowData = async (startAssetId) => {
+    console.log(`Building value flow tree for ${startAssetId}...`);
     
-    const detailsMap = new Map(assetDetails.map(a => a ? [a.ipId, a] : null).filter(Boolean));
-    const disputeMap = new Map(disputeStatuses.map((s, i) => [ipIdArray[i], s]));
+    // 1. Build tree structure
+    const tree = await buildRemixTree(startAssetId);
+    if (!tree) throw new Error("Could not build the initial asset tree.");
 
-    const buildTree = (node) => {
-        const details = detailsMap.get(node.ipId);
-        if (!details) return null;
+    // 2. Collect all unique IP IDs
+    const allIpIds = new Set();
+    const traverseAndCollect = (node) => {
+        if (!node?.ipId) return;
+        allIpIds.add(node.ipId);
+        node.children?.forEach(traverseAndCollect);
+    };
+    traverseAndCollect(tree);
+
+    console.log(`Fetching analytics for ${allIpIds.size} assets...`);
+
+    // 3. Fetch analytics for all nodes with rate limiting
+    const analyticsPromises = Array.from(allIpIds).map(id => getOnChainAnalytics(id));
+    const allAnalytics = await processWithConcurrency(analyticsPromises, p => p);
+    const analyticsMap = new Map(
+        Array.from(allIpIds).map((id, i) => [id, allAnalytics[i]])
+    );
+
+    // 4. Enrich tree with analytics
+    const enrichTree = (node) => {
+        if (!node?.ipId) return null;
+        const analytics = analyticsMap.get(node.ipId) || {};
+        const firstToken = Object.keys(analytics.totalRoyaltiesPaid || {})[0];
+        const numericRoyalties = parseFloat(analytics.totalRoyaltiesPaid?.[firstToken]) || 0;
+        
         return {
-            ipId: details.ipId,
-            title: details.title,
-            mediaType: details.mediaType,
-            analytics: { disputeStatus: disputeMap.get(node.ipId) },
-            children: node.children.map(buildTree).filter(Boolean)
+            ...node,
+            analytics: { 
+                ...analytics, 
+                totalRoyaltiesClaimed: numericRoyalties 
+            },
+            children: node.children.map(enrichTree).filter(Boolean)
         };
     };
-    return buildTree(idTree);
+
+    return enrichTree(tree);
 };
 
+// --- Get Royalty Transactions ---
 const getRoyaltyTransactions = async (ipId) => {
     const allEvents = await getAllRoyaltyEvents(ipId);
+    
     const txDetailsResponses = await processWithConcurrency(allEvents, async (event) => {
         const cacheKey = `txDetail-${event.txHash}`;
         const cachedTx = cache.get(cacheKey);
         if (cachedTx) return { data: cachedTx };
+        
         try {
             const res = await storyScanApi.get(`/transactions/${event.txHash}`);
             cache.set(cacheKey, res.data);
             return res;
-        } catch (e) { return null; }
+        } catch (e) { 
+            return null; 
+        }
     });
     
-    return txDetailsResponses.filter(res => res && res.data).map(res => {
-        const txData = res.data;
-        const transfer = txData.token_transfers?.[0];
-        const value = transfer?.total?.value ? formatUnits(BigInt(transfer.total.value), parseInt(transfer.token.decimals, 10)) : "0";
-        return {
-            txHash: txData.hash,
-            timestamp: txData.timestamp,
-            from: txData.from.hash,
-            value: `${parseFloat(value).toFixed(4)} ${transfer?.token.symbol || 'N/A'}`,
-        };
-    });
+    return txDetailsResponses
+        .filter(res => res && res.data)
+        .map(res => {
+            const txData = res.data;
+            const transfer = txData.token_transfers?.[0];
+            const value = transfer?.total?.value 
+                ? formatUnits(BigInt(transfer.total.value), parseInt(transfer.token.decimals, 10))
+                : "0";
+            
+            return {
+                txHash: txData.hash,
+                timestamp: txData.timestamp,
+                from: txData.from.hash,
+                value: `${parseFloat(value).toFixed(4)} ${transfer?.token.symbol || 'N/A'}`,
+            };
+        });
 };
 
+// --- Get Top Licensees ---
 const getTopLicensees = async (ipId) => {
     const allEvents = await getAllRoyaltyEvents(ipId);
     if (allEvents.length === 0) return [];
@@ -329,12 +381,15 @@ const getTopLicensees = async (ipId) => {
         const txDetailsResponses = await processWithConcurrency(data.txHashes, async (hash) => {
             const cacheKey = `txDetail-${hash}`;
             const cachedTx = cache.get(cacheKey);
-            if(cachedTx) return { data: cachedTx };
+            if (cachedTx) return { data: cachedTx };
+            
             try {
                 const res = await storyScanApi.get(`/transactions/${hash}`);
                 cache.set(cacheKey, res.data);
                 return res;
-            } catch(e) { return null; }
+            } catch (e) { 
+                return null; 
+            }
         });
 
         const totalsByToken = {};
@@ -344,26 +399,31 @@ const getTopLicensees = async (ipId) => {
             const currency = transfer.token.symbol;
             const decimals = parseInt(transfer.token.decimals, 10);
             const value = BigInt(transfer.total.value);
+            
             if (!totalsByToken[currency]) totalsByToken[currency] = { total: BigInt(0), decimals };
             totalsByToken[currency].total += value;
         });
-        const displayValues = Object.entries(totalsByToken).map(([currency, tokenData]) => 
-            `${parseFloat(formatUnits(tokenData.total, tokenData.decimals)).toFixed(4)} ${currency}`
-        ).join(', ');
-        return { address, count: data.count, totalValue: displayValues || "N/A" };
+        
+        const displayValues = Object.entries(totalsByToken)
+            .map(([currency, tokenData]) => 
+                `${parseFloat(formatUnits(tokenData.total, tokenData.decimals)).toFixed(4)} ${currency}`
+            ).join(', ');
+        
+        return { 
+            address, 
+            count: data.count, 
+            totalValue: displayValues || "N/A" 
+        };
     });
 
     return Promise.all(enrichedLicenseesPromises);
 };
 
 module.exports = {
-  getGraphLayout,
-  getIpAsset, 
-  getValueFlowData,
-  buildRemixTree,
-  getAssetChildren,
-  getOnChainAnalytics, 
-  getRoyaltyTransactions,
-  getTopLicensees,
-  getAssetChildren,
+    getIpAsset,
+    getAssetChildren,
+    getValueFlowData,
+    getOnChainAnalytics,
+    getRoyaltyTransactions,
+    getTopLicensees,
 };

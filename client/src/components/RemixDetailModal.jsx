@@ -73,7 +73,7 @@ const RoyaltyLedgerTab = ({ ipId }) => {
         fetchLedger();
     }, [ipId]);
 
-    if (isLoading) return <div className="text-center p-6 text-purple-400">Loading Royalty Ledger...</div>;
+   if (isLoading) return <div className="text-center p-6 text-purple-400">Loading Royalty Ledger...</div>;
     if (error) return <div className="text-center p-6 text-red-400 bg-red-900/30 rounded-lg break-words">{error}</div>;
     if (transactions.length === 0) return <div className="text-center p-6 text-gray-500">No royalty payment events found.</div>;
 
@@ -88,7 +88,12 @@ const RoyaltyLedgerTab = ({ ipId }) => {
                         </a>
                     </div>
                     <div className="flex justify-between items-center text-xs text-gray-400">
-                        <span className="truncate max-w-[40%]">From: <span className="font-mono">{tx.from.substring(0, 8)}...</span></span>
+                        {/* --- PERUBAHAN UTAMA DI SINI --- */}
+                        <span className="truncate max-w-[40%]">
+                            From: <span className="font-mono">
+                                {typeof tx.from === 'string' ? `${tx.from.substring(0, 8)}...` : 'N/A'}
+                            </span>
+                        </span>
                         <span>{tx.timestamp}</span>
                     </div>
                 </div>

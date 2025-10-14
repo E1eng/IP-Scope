@@ -29,8 +29,7 @@ function ExplorerPage() {
   const [hasMore, setHasMore] = useState(offset < totalResults); 
   const [selectedAsset, setSelectedAsset] = useState(null);
   
-  // FIX: Menggunakan stat default yang lebih akurat
-  const [stats, setStats] = useState({ totalRoyalties: 'N/A', totalAssets: '0', overallDisputeStatus: 'N/A' });
+  const [stats, setStats] = useState({ totalRoyalties: 'N/A', totalAssets: '0', overallDisputeStatus: '0' });
 
 
   // Efek untuk mengambil statistik dashboard (REAL)
@@ -76,7 +75,7 @@ function ExplorerPage() {
   }, [currentAddress, currentTokenContract, totalResults, updateSearchState, API_BASE_URL]);
 
 
-  // Helper untuk melakukan satu panggilan API (tetap sama)
+  // Helper untuk melakukan satu panggilan API
   const fetchAttempt = useCallback(async (ownerAddr, tokenContractAddr, currentOffset) => {
     
     // Membangun Query Parameters
@@ -85,6 +84,7 @@ function ExplorerPage() {
         offset: currentOffset,
     });
     
+    // FIX KRITIS: HANYA tambahkan parameter jika nilainya truthy (bukan null atau undefined)
     if (ownerAddr) {
         params.append('ownerAddress', ownerAddr);
     }

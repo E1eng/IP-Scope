@@ -1,193 +1,202 @@
 const axios = require('axios');
-const { get, set } = require('../utils/cache'); 
+const { get, set } = require('../utils/cache');
+const { formatUnits } = require("viem");
 
-// Simple utility for formatting Wei (18 decimals) to a readable ETH string
+// --- URL & API Key Configuration ---
+const STORY_ASSETS_API_BASE_URL = 'https://api.storyapis.com/api/v4/assets';
+const STORY_TRANSACTIONS_API_BASE_URL = 'https://api.storyapis.com/api/v4/transactions';
+const STORYSCAN_API_BASE_URL = 'https://www.storyscan.io/api/v2';
+
+const storyApiKey = process.env.STORY_PROTOCOL_API_KEY;
+
+// --- Axios Instances ---
+
+// Instance untuk Story Protocol API (memerlukan X-Api-Key)
+const storyApi = axios.create({
+    headers: {
+        'X-Api-Key': storyApiKey,
+        'Content-Type': 'application/json',
+    }
+});
+
+// Instance untuk StoryScan API (tidak memerlukan API key)
+const storyScanApi = axios.create({
+    baseURL: STORYSCAN_API_BASE_URL,
+    headers: { 'accept': 'application/json' }
+});
+
+
+// --- Helper Functions ---
+
+/**
+ * Formats a raw token value string into a readable decimal format.
+ * @param {string | bigint} value The raw value from the blockchain.
+ * @param {number | string} decimals The number of decimals the token uses.
+ * @returns {string} A formatted decimal string.
+ */
+const formatTokenValue = (value, decimals) => {
+    try {
+        const numDecimals = parseInt(decimals, 10);
+        if (isNaN(numDecimals)) return '0.0000';
+        return parseFloat(formatUnits(BigInt(value), numDecimals)).toFixed(4);
+    } catch (e) {
+        console.error(`Error formatting token value: ${value}`, e);
+        return '0.0000';
+    }
+};
+
+/**
+ * Utility to format a BigInt representing Wei into a readable ETH string.
+ * This is used for aggregating total values.
+ */
 const formatWeiToEther = (weiAmount) => {
     try {
         const wei = BigInt(weiAmount);
-        let weiStr = wei.toString().padStart(19, '0'); 
-        const integerPart = weiStr.slice(0, -18) || '0';
-        const decimalPart = weiStr.slice(-18); 
-        
-        if (decimalPart.replace(/0/g, '') === '') {
-             return `${integerPart}.00`;
-        }
-        
-        let formattedDecimal = decimalPart.replace(/0+$/, '');
-        
-        return `${integerPart}.${formattedDecimal.slice(0, 4)}`; 
+        return parseFloat(formatUnits(wei, 18)).toFixed(4);
     } catch (e) {
         console.error(`Error formatting Wei: ${weiAmount}`, e);
         return 'N/A';
     }
 };
 
-const STORY_ASSETS_API_BASE_URL = 'https://api.storyapis.com/api/v4/assets';
-const STORY_TRANSACTIONS_API_BASE_URL = 'https://api.storyapis.com/api/v4/transactions';
-const STORY_TRANSACTION_DETAIL_BASE_URL = 'https://api.storyapis.com/api/v4/transactions'; 
 
-const storyApiKey = process.env.STORY_PROTOCOL_API_KEY;
-const storyScanApiKey = process.env.STORYSCAN_API_KEY; 
+// --- Core Service Functions ---
 
-// Utility untuk memanggil API Story Protocol (Assets atau Transactions)
-const fetchStoryApi = async (url, apiKey, body, method = 'POST') => { 
-    const options = {
-        method: method,
-        url: url,
-        headers: {
-            'X-Api-Key': apiKey,
-            'Content-Type': 'application/json',
-        },
-        data: body 
-    };
-
-    try {
-        const response = await axios(options);
-        if (url.includes(STORY_ASSETS_API_BASE_URL) && method === 'POST') {
-             return { data: response.data.data, pagination: response.data.pagination };
-        }
-        return response.data;
-    } catch (error) {
-        if (error.response && (error.response.status === 404 || error.response.status === 400)) {
-            if (url.includes(STORY_ASSETS_API_BASE_URL)) return { data: [], pagination: { total: 0 } };
-            if (url.includes(STORY_TRANSACTIONS_API_BASE_URL)) return { events: [] };
-        }
-        
-        console.error(`[SERVICE_ERROR] Gagal mengambil data dari Story Protocol API (${url}).`);
-        if (error.response) {
-            throw new Error(`API Error: Status ${error.response.status} - ${error.response.data.message || 'Gagal mengambil data'}`);
-        } else {
-            throw new Error('Terjadi kesalahan saat membuat permintaan atau tidak ada respons.');
-        }
-    }
-}
-
-// Fungsi pembantu untuk mengambil dan mengagregasi event royalti menggunakan Transactions API
+/**
+ * Fetches royalty events, gets details from StoryScan, and aggregates the data.
+ * This function implements the correct two-step data fetching logic.
+ */
 const getAndAggregateRoyaltyEventsFromApi = async (ipId) => {
-    
-    // PENTING: Periksa apakah key transaksi ada sebelum melakukan panggilan
-    if (!storyScanApiKey) {
-        throw new Error("STORYSCAN_API_KEY is not set in environment variables.");
+    if (!storyApiKey) {
+        throw new Error("STORY_PROTOCOL_API_KEY is not set in environment variables.");
     }
     
-    console.log(`[SERVICE] Fetching RoyaltyPaid events from Transactions API for IP ID: ${ipId}`);
-
-    const requestBody = {
-        where: {
-            eventTypes: ["RoyaltyPaid"],
-            ipIds: [ipId],
-        },
-        pagination: { limit: 200 }, 
+    // STEP 1: Fetch RoyaltyPaid event logs to get transaction hashes.
+    console.log(`[SERVICE] Step 1: Fetching RoyaltyPaid event logs for IP ID: ${ipId}`);
+    const eventLogBody = {
+        where: { eventTypes: ["RoyaltyPaid"], ipIds: [ipId] },
+        pagination: { limit: 200 }, // Fetch up to 200 events
         orderBy: "blockNumber",
         orderDirection: "desc"
     };
-    
+
+    let events;
     try {
-        const response = await fetchStoryApi(STORY_TRANSACTIONS_API_BASE_URL, storyScanApiKey, requestBody);
-        const events = response.events || [];
+        const response = await storyApi.post(STORY_TRANSACTIONS_API_BASE_URL, eventLogBody);
+        events = response.data.data || [];
+    } catch (error) {
+        const status = error.response?.status;
+        const message = error.response?.data?.message || error.message;
+        console.error(`[SERVICE_ERROR] Step 1 failed for ${ipId}. Status: ${status}, Message: ${message}`);
+        throw new Error(`Failed to fetch event logs for IP ID ${ipId}. Status: ${status}`);
+    }
 
-        if (events.length === 0) {
-            return { transactions: [], totalWei: 0n, licenseeMap: new Map() };
-        }
-        
-        const licenseeMap = new Map();
-        let totalWei = 0n;
-        
-        const transactions = events.map(event => {
-            const { caller, amount } = event.args;
-            const numericAmount = BigInt(amount || '0'); 
-            totalWei += numericAmount;
-            
-            const currentData = licenseeMap.get(caller) || { address: caller, count: 0, totalWei: 0n };
-            currentData.count += 1;
-            currentData.totalWei += numericAmount;
-            licenseeMap.set(caller, currentData);
-
-            return {
-                txHash: event.transactionHash,
-                from: caller, 
-                value: `${formatWeiToEther(numericAmount)} ETH`, 
-                timestamp: event.timestamp ? new Date(event.timestamp * 1000).toLocaleString('en-US') : `Block #${event.blockNumber}`
-            };
-        }).reverse(); 
-
-        return { transactions, totalWei, licenseeMap };
-    } catch (e) {
-        // FIX: Return nilai nol di catch agar loop agregasi global tidak berhenti
-        console.error(`[ROYALTY AGGREGATION ERROR] Failed to query Transactions API for IP ID ${ipId}: ${e.message}`);
+    if (events.length === 0) {
         return { transactions: [], totalWei: 0n, licenseeMap: new Map() };
     }
-}
 
+    // STEP 2: Fetch detailed transaction data from StoryScan for each transaction hash.
+    const txHashes = events.map(event => event.transactionHash);
+    console.log(`[SERVICE] Step 2: Found ${txHashes.length} events. Fetching details from StoryScan...`);
+
+    const txDetailPromises = txHashes.map(hash =>
+        storyScanApi.get(`/transactions/${hash}`).catch(err => {
+            console.error(`Failed to fetch detail for tx ${hash}:`, err.message);
+            return null; // Return null on failure to not break Promise.all
+        })
+    );
+    const txDetailsResponses = await Promise.all(txDetailPromises);
+
+    // STEP 3: Process and aggregate the detailed data from StoryScan.
+    const licenseeMap = new Map();
+    let totalWei = 0n;
+    const transactions = [];
+
+    txDetailsResponses.forEach(res => {
+        if (!res || !res.data) return; // Skip failed fetches
+
+        const txData = res.data;
+        const royaltyTransfer = txData.token_transfers?.[0];
+
+        if (royaltyTransfer && royaltyTransfer.total && royaltyTransfer.total.value) {
+            const caller = txData.from.hash;
+            const rawValue = BigInt(royaltyTransfer.total.value);
+            const decimals = parseInt(royaltyTransfer.token.decimals, 10);
+            const symbol = royaltyTransfer.token.symbol;
+
+            // Normalize value to 18 decimals (Wei) for consistent total calculation
+            const valueInWei = rawValue * (10n ** BigInt(18 - decimals));
+            totalWei += valueInWei;
+
+            // Update licensee map for "Top Licensees"
+            const currentData = licenseeMap.get(caller) || { address: caller, count: 0, totalWei: 0n };
+            currentData.count++;
+            currentData.totalWei += valueInWei;
+            licenseeMap.set(caller, currentData);
+
+            // Prepare transaction object for the frontend ledger
+            transactions.push({
+                txHash: txData.hash,
+                from: caller,
+                value: `${formatTokenValue(rawValue, decimals)} ${symbol}`,
+                timestamp: txData.timestamp ? new Date(txData.timestamp).toLocaleString('en-US') : `Block #${txData.block}`
+            });
+        }
+    });
+    
+    console.log(`[SERVICE] Step 3: Successfully processed ${transactions.length} transactions.`);
+    return { transactions: transactions.reverse(), totalWei, licenseeMap };
+};
 
 /**
- * CORE FUNCTION: Get all IP Assets for a given filter set.
+ * Get all IP Assets for a given filter set.
  */
 const getAssetsByOwner = async (ownerAddress, limit = 20, offset = 0, tokenContract) => {
-    
-    // --- LOGIC: BUILD FILTER CLAUSE ---
     const whereClause = {};
-    
-    // 1. Owner Address (Apply if provided and valid)
-    if (ownerAddress) {
-        whereClause.ownerAddress = ownerAddress.trim(); 
-    }
+    if (ownerAddress) whereClause.ownerAddress = ownerAddress.trim();
+    if (tokenContract) whereClause.tokenContract = tokenContract.trim();
 
-    // 2. Token Contract (Apply if provided)
-    if (tokenContract) {
-        const cleanedTokenContract = tokenContract.trim();
-        if (cleanedTokenContract) { 
-             whereClause.tokenContract = cleanedTokenContract; 
-        }
-    }
-
-    // MANDATORY CHECK: Harus ada setidaknya satu filter (Owner atau Token Contract)
     if (Object.keys(whereClause).length === 0) {
         return { data: [], pagination: { total: 0 } };
     }
 
-    // Build unique cache key
     const cacheKey = `assets:owner:${ownerAddress || 'none'}:${limit}:${offset}:${tokenContract || 'all'}`;
     const cachedResponse = get(cacheKey);
     if (cachedResponse) {
-        console.log(`[SERVICE] Mengambil aset dari cache untuk filter: ${cacheKey}`);
+        console.log(`[SERVICE] Serving assets from cache for filter: ${cacheKey}`);
         return cachedResponse;
     }
     
     const requestBody = {
-        includeLicenses: true, 
-        moderated: false,      
+        includeLicenses: true,
+        moderated: false,
         orderBy: "blockNumber",
         orderDirection: "desc",
-        pagination: { limit: limit, offset: offset },
-        where: whereClause 
+        pagination: { limit, offset },
+        where: whereClause
     };
     
-    console.log("[SERVICE DEBUG] Final Assets Request Body:", JSON.stringify(requestBody, null, 2));
-
-
-    const response = await fetchStoryApi(STORY_ASSETS_API_BASE_URL, storyApiKey, requestBody);
-    set(cacheKey, response);
-    return response; 
+    try {
+        const response = await storyApi.post(STORY_ASSETS_API_BASE_URL, requestBody);
+        const result = { data: response.data.data, pagination: response.data.pagination };
+        set(cacheKey, result);
+        return result;
+    } catch (error) {
+        console.error(`[SERVICE_ERROR] Failed to get assets by owner:`, error.message);
+        throw error;
+    }
 };
 
 /**
- * NEW: Aggregates portfolio-wide stats (Royalties and Dispute Status) for the dashboard.
+ * Aggregates portfolio-wide stats (Royalties and Dispute Status) for the dashboard.
  */
 const getPortfolioStats = async (ownerAddress) => {
-    
-    if (!storyApiKey) {
-        throw new Error("STORY_PROTOCOL_API_KEY is not set in environment variables.");
-    }
     if (!ownerAddress) {
         return { totalAssets: 0, totalRoyalties: '0.00 ETH', overallDisputeStatus: 'N/A' };
     }
     
-    // 1. Dapatkan semua aset (cap di 200 untuk menghindari timeout)
-    const MAX_ASSET_LIMIT = 200; 
     let allAssets = [];
-    
-    let assetResponse = await getAssetsByOwner(ownerAddress, MAX_ASSET_LIMIT, 0);
+    const assetResponse = await getAssetsByOwner(ownerAddress, 200, 0); // Cap at 200 assets for performance
     allAssets = assetResponse.data;
     const totalAssets = assetResponse.pagination?.total || 0;
 
@@ -195,123 +204,99 @@ const getPortfolioStats = async (ownerAddress) => {
         return { totalAssets, totalRoyalties: '0.00 ETH', overallDisputeStatus: 'None' };
     }
 
-    // 2. Agregasi Total Royalti dan Status Sengketa
     let globalTotalWei = 0n;
-    let overallDisputeStatus = 'None'; 
+    let overallDisputeStatus = 'None';
 
+    const royaltyPromises = allAssets.map(asset => 
+        getAndAggregateRoyaltyEventsFromApi(asset.ipId.toLowerCase())
+            .catch(e => {
+                console.error(`Error processing IP ID ${asset.ipId}: ${e.message}`);
+                return { totalWei: 0n }; // Return 0 on failure
+            })
+    );
+
+    const royaltyResults = await Promise.all(royaltyPromises);
+    royaltyResults.forEach(result => {
+        globalTotalWei += result.totalWei;
+    });
+
+    // Simple dispute status aggregation
     for (const asset of allAssets) {
-        try {
-            // Re-use the royalty aggregation function for each asset
-            const { totalWei } = await getAndAggregateRoyaltyEventsFromApi(asset.ipId.toLowerCase());
-            globalTotalWei += totalWei;
-            
-            // Dispute Status Aggregation: Jika ADA sengketa Aktif/Pending, set status portofolio
-            if (asset.disputeStatus === 'Active') {
-                overallDisputeStatus = 'Active';
-                break; // Hentikan loop jika menemukan status tertinggi
-            } else if (asset.disputeStatus === 'Pending' && overallDisputeStatus === 'None') {
-                overallDisputeStatus = 'Pending';
-            }
-
-        } catch (e) {
-            console.error(`Error processing IP ID ${asset.ipId}: ${e.message}`);
+        if (asset.disputeStatus === 'Active') {
+            overallDisputeStatus = 'Active';
+            break;
+        } else if (asset.disputeStatus === 'Pending' && overallDisputeStatus === 'None') {
+            overallDisputeStatus = 'Pending';
         }
     }
     
     return { 
         totalAssets, 
-        totalRoyalties: formatWeiToEther(globalTotalWei), 
-        overallDisputeStatus: overallDisputeStatus 
+        totalRoyalties: `${formatWeiToEther(globalTotalWei)} ETH`, 
+        overallDisputeStatus
     };
 };
 
 
-// --- Fungsi Lainnya ---
+// --- Other Exported Functions ---
 
 const getAssetDetails = async (ipId) => {
-    if (!storyApiKey) {
-        throw new Error("STORY_PROTOCOL_API_KEY is not set in environment variables.");
-    }
-
     if (!ipId) return null;
     const lowerCaseIpId = ipId.toLowerCase(); 
     const cacheKey = `asset:detail:${ipId}`;
     let asset = get(cacheKey);
-    if (!asset || !asset.ipId) { 
-        const searchIpIds = [ipId]; 
-        if (lowerCaseIpId !== ipId) { searchIpIds.push(lowerCaseIpId); }
-        const requestBody = {
-            includeLicenses: true, moderated: false, orderBy: "blockNumber", orderDirection: "desc", pagination: { limit: 1 }, where: { ipIds: searchIpIds }
-        };
-        // FIX: Tambahkan disputeStatus ke API call asset
-        const response = await fetchStoryApi(STORY_ASSETS_API_BASE_URL, storyApiKey, requestBody);
-        asset = response.data[0];
-    }
-    
-    // Default Dispute Status jika tidak ada
-    let assetDisputeStatus = asset.disputeStatus || 'None'; 
 
-    let analytics = {};
-    if (asset) {
-        try {
-            const { totalWei } = await getAndAggregateRoyaltyEventsFromApi(ipId); 
-            analytics.totalRoyaltiesPaid = { ETH: formatWeiToEther(totalWei) };
-            // FIX: Menggunakan status sengketa real/default
-            analytics.disputeStatus = assetDisputeStatus; 
-        } catch (e) {
-            console.error(`[API_ERROR] Gagal mendapatkan data royalti untuk ${ipId}: ${e.message}`);
-            analytics.errorMessage = e.message; 
-        }
-    } else { return null; }
-    
-    if (asset) { 
-        asset.analytics = analytics; 
-        asset.disputeStatus = assetDisputeStatus; // Ensure base object has status for AssetTable
-        set(cacheKey, asset); 
+    if (!asset) { 
+        const requestBody = {
+            includeLicenses: true,
+            moderated: false,
+            pagination: { limit: 1 },
+            where: { ipIds: [lowerCaseIpId] }
+        };
+        const response = await storyApi.post(STORY_ASSETS_API_BASE_URL, requestBody);
+        asset = response.data.data?.[0];
     }
+    
+    if (!asset) return null;
+
+    let analytics = { disputeStatus: asset.disputeStatus || 'None' };
+    try {
+        const { totalWei } = await getAndAggregateRoyaltyEventsFromApi(lowerCaseIpId);
+        analytics.totalRoyaltiesPaid = { ETH: formatWeiToEther(totalWei) };
+    } catch (e) {
+        console.error(`[API_ERROR] Failed to get royalty data for ${ipId}: ${e.message}`);
+        analytics.errorMessage = e.message; 
+    }
+    
+    asset.analytics = analytics;
+    set(cacheKey, asset);
     return asset;
 };
 
 const getRoyaltyTransactions = async (ipId) => {
-    try {
-        const { transactions } = await getAndAggregateRoyaltyEventsFromApi(ipId);
-        return transactions;
-    } catch (e) {
-        throw new Error(`Failed to load royalty transactions: ${e.message}`); 
-    }
+    const { transactions } = await getAndAggregateRoyaltyEventsFromApi(ipId);
+    return transactions;
 };
 
 const getTopLicensees = async (ipId) => {
-    try {
-        // Logika Top Licensees yang sudah ada
-        const { licenseeMap } = await getAndAggregateRoyaltyEventsFromApi(ipId);
-        let licensees = Array.from(licenseeMap.values()).map(lic => ({
-            ...lic,
-            totalValue: `${formatWeiToEther(lic.totalWei)} ETH`,
-        }));
-        licensees.sort((a, b) => (a.totalWei < b.totalWei) ? 1 : -1);
-        return licensees.slice(0, 3);
-    } catch (e) {
-        throw new Error(`Failed to load royalty transactions: ${e.message}`); 
-    }
+    const { licenseeMap } = await getAndAggregateRoyaltyEventsFromApi(ipId);
+    const licensees = Array.from(licenseeMap.values()).map(lic => ({
+        ...lic,
+        totalValue: `${formatWeiToEther(lic.totalWei)} ETH`,
+    }));
+    licensees.sort((a, b) => (b.totalWei > a.totalWei) ? 1 : -1);
+    return licensees.slice(0, 3);
 };
 
 const fetchTransactionDetail = async (txHash) => {
-    if (!storyScanApiKey) {
-        throw new Error("STORYSCAN_API_KEY is not set in environment variables.");
-    }
-    
-    const url = `${STORY_TRANSACTION_DETAIL_BASE_URL}/${txHash}`;
     try {
-        const options = { method: 'GET', url: url, headers: { 'X-Api-Key': storyScanApiKey } };
-        const response = await axios(options);
+        const response = await storyScanApi.get(`/transactions/${txHash}`);
         return response.data;
     } catch (error) {
-        if (error.response && error.response.status === 404) { return { error: 'Transaction not found on API' }; }
+        if (error.response?.status === 404) { return { error: 'Transaction not found on StoryScan' }; }
         throw new Error(`Failed to fetch transaction detail: ${error.message}`);
     }
 }
-
 
 module.exports = {
   getAssetsByOwner,
@@ -319,5 +304,5 @@ module.exports = {
   getRoyaltyTransactions,
   getTopLicensees,
   fetchTransactionDetail, 
-  getPortfolioStats, // NEW Export
+  getPortfolioStats,
 };

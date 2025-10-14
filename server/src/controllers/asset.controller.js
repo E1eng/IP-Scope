@@ -1,100 +1,121 @@
-const storyProtocolService = require('../services/storyProtocol.service');
+// server/src/controllers/asset.controller.js
+const service = require('../services/storyProtocol.service.js');
 
-const getAssetsByOwnerController = async (req, res) => {
+/**
+ * GET /api/assets?ownerAddress=&tokenContract=&limit=&offset=
+ * Returns { data: [...], pagination: { total, limit, offset } }
+ */
+const searchAssets = async (req, res) => {
   try {
-    // Hanya ambil parameter yang relevan. `tokenContract` diabaikan.
-    const { ownerAddress, limit, offset } = req.query;
+    const owner = req.query.ownerAddress || null;
+    const tokenContract = req.query.tokenContract || null;
+    const limit = req.query.limit ? parseInt(req.query.limit, 10) : 20;
+    const offset = req.query.offset ? parseInt(req.query.offset, 10) : 0;
 
-    // Validasi bahwa ownerAddress ada
-    if (!ownerAddress) {
-        return res.status(400).json({ message: "ownerAddress query parameter is required." });
-    }
-
-    const { data: assets, pagination } = await storyProtocolService.getAssetsByOwner(
-        ownerAddress,
-        parseInt(limit) || 20,
-        parseInt(offset) || 0
-    );
-    
-    res.status(200).json({
-        data: assets,
-        pagination: pagination || { total: 0 }
-    });
-
-  } catch (error) {
-    const status = error.response?.status || 500;
-    const message = error.response?.data?.detail || error.message;
-    console.error(`[CONTROLLER_ERROR] Status: ${status}, Message: ${message}`);
-    res.status(status).json({ message });
+    // service.getAssetsByOwner returns { data: [], pagination: {} }
+    const result = await service.getAssetsByOwner(owner, limit, offset, tokenContract);
+    // Ensure pagination shape
+    const pagination = result.pagination || { total: (result.data || []).length, limit, offset };
+    return res.json({ data: result.data || [], pagination });
+  } catch (e) {
+    console.error('[CONTROLLER] searchAssets error', e);
+    return res.status(500).json({ message: 'Internal server error', error: e.message });
   }
 };
 
-// --- Controller Lainnya (tidak berubah) ---
-const getDashboardStatsController = async (req, res) => {
-    try {
-        const { ownerAddress } = req.query; 
-        if (!ownerAddress) { 
-             return res.status(400).json({ message: "OwnerAddress query parameter is required." });
-        }
-        const stats = await storyProtocolService.getPortfolioStats(ownerAddress);
-        res.status(200).json(stats);
-    } catch (error) {
-        console.error(`[CONTROLLER_ERROR] ${error.message}`);
-        res.status(500).json({ message: `An error occurred on the server: ${error.message}` });
-    }
+/**
+ * GET /api/assets/:ipId
+ * Returns detail asset with analytics (or 404)
+ */
+const getAssetDetails = async (req, res) => {
+  try {
+    const ipId = req.params.ipId;
+    if (!ipId) return res.status(400).json({ message: 'ipId required' });
+
+    const asset = await service.getAssetDetails(ipId);
+    if (!asset) return res.status(404).json({ message: 'Asset not found' });
+
+    return res.json(asset);
+  } catch (e) {
+    console.error('[CONTROLLER] getAssetDetails error', e);
+    return res.status(500).json({ message: 'Internal server error', error: e.message });
+  }
 };
 
-const getAssetDetailsController = async (req, res) => {
-    try {
-        const { ipId } = req.params;
-        const asset = await storyProtocolService.getAssetDetails(ipId);
-        if (!asset) { return res.status(404).json({ message: "Asset not found." }); }
-        res.status(200).json(asset);
-    } catch (error) {
-        console.error(`[CONTROLLER_ERROR] ${error.message}`);
-        res.status(500).json({ message: `An error occurred on the server: ${error.message}` });
-    }
+/**
+ * GET /api/assets/:ipId/transactions
+ * Returns list of royalty txs: { count, data }
+ */
+const getAssetTransactions = async (req, res) => {
+  try {
+    const ipId = req.params.ipId;
+    if (!ipId) return res.status(400).json({ message: 'ipId required' });
+
+    const list = await service.getRoyaltyTransactions(ipId);
+    return res.json({ count: list.length, data: list });
+  } catch (e) {
+    console.error('[CONTROLLER] getAssetTransactions error', e);
+    return res.status(500).json({ message: 'Internal server error', error: e.message });
+  }
 };
 
-const getRoyaltyTransactionsController = async (req, res) => {
-    try {
-        const { ipId } = req.params;
-        const transactions = await storyProtocolService.getRoyaltyTransactions(ipId);
-        res.status(200).json(transactions);
-    } catch (error) {
-        console.error(`[CONTROLLER_ERROR] ${error.message}`);
-        res.status(500).json({ message: `An error occurred on the server: ${error.message}` });
-    }
+/**
+ * GET /api/assets/:ipId/top-licensees
+ * Returns top licensees
+ */
+const getTopLicensees = async (req, res) => {
+  try {
+    const ipId = req.params.ipId;
+    if (!ipId) return res.status(400).json({ message: 'ipId required' });
+
+    const top = await service.getTopLicensees(ipId);
+    return res.json({ count: top.length, data: top });
+  } catch (e) {
+    console.error('[CONTROLLER] getTopLicensees error', e);
+    return res.status(500).json({ message: 'Internal server error', error: e.message });
+  }
 };
 
-const getTopLicenseesController = async (req, res) => {
-    try {
-        const { ipId } = req.params;
-        const licensees = await storyProtocolService.getTopLicensees(ipId);
-        res.status(200).json(licensees);
-    } catch (error) {
-        console.error(`[CONTROLLER_ERROR] ${error.message}`);
-        res.status(500).json({ message: `An error occurred on the server: ${error.message}` });
-    }
+/**
+ * GET /api/stats?ownerAddress=
+ * Returns stats object directly: { totalRoyalties, totalAssets, overallDisputeStatus }
+ * (Frontend expects response.data.totalRoyalties)
+ */
+const getStats = async (req, res) => {
+  try {
+    const owner = req.query.ownerAddress;
+    if (!owner) return res.status(400).json({ message: 'ownerAddress query param required' });
+
+    const stats = await service.getPortfolioStats(owner);
+    // Return the stats object at root (so frontend: response.data.totalRoyalties works)
+    return res.json(stats);
+  } catch (e) {
+    console.error('[CONTROLLER] getStats error', e);
+    return res.status(500).json({ message: 'Internal server error', error: e.message });
+  }
 };
 
-const getTransactionDetailController = async (req, res) => {
-    try {
-        const { txHash } = req.params;
-        const detail = await storyProtocolService.fetchTransactionDetail(txHash);
-        if (detail.error) { return res.status(404).json({ message: detail.error }); }
-        res.status(200).json(detail);
-    } catch (error) {
-        console.error(`[CONTROLLER_ERROR] ${error.message}`);
-        res.status(500).json({ message: `An error occurred on the server: ${error.message}` });
-    }
+/**
+ * Backwards-compatible: GET /api/portfolio/:owner/stats
+ */
+const getPortfolioStats = async (req, res) => {
+  try {
+    const owner = req.params.owner;
+    if (!owner) return res.status(400).json({ message: 'owner required' });
+
+    const stats = await service.getPortfolioStats(owner);
+    return res.json(stats);
+  } catch (e) {
+    console.error('[CONTROLLER] getPortfolioStats error', e);
+    return res.status(500).json({ message: 'Internal server error', error: e.message });
+  }
 };
 
 module.exports = {
-  getAssetsByOwnerController, 
-  getAssetDetailsController,
-  getRoyaltyTransactionsController,
-  getTopLicenseesController,
-  getTransactionDetailController,
-  getDashboardStatsController,
+  searchAssets,
+  getAssetDetails,
+  getAssetTransactions,
+  getTopLicensees,
+  getStats,
+  getPortfolioStats
 };

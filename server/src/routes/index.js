@@ -1,23 +1,21 @@
+// server/src/routes/index.js
 const express = require('express');
-const { 
-    getAssetsByOwnerController, 
-    getAssetDetailsController,
-    getRoyaltyTransactionsController,
-    getTopLicenseesController,
-    getTransactionDetailController,
-    getDashboardStatsController 
-} = require('../controllers/asset.controller');
-
 const router = express.Router();
 
-router.get('/assets', getAssetsByOwnerController);
+const assetController = require('../controllers/asset.controller.js');
 
-// NEW Route: Endpoint untuk statistik Dashboard
-router.get('/stats', getDashboardStatsController);
+// Search / list assets used by ExplorerPage
+router.get('/assets', assetController.searchAssets);
 
-router.get('/assets/:ipId/details', getAssetDetailsController);
-router.get('/assets/:ipId/royalty-transactions', getRoyaltyTransactionsController);
-router.get('/assets/:ipId/top-licensees', getTopLicenseesController);
-router.get('/transactions/:txHash/detail', getTransactionDetailController);
+// Asset detail endpoints
+router.get('/assets/:ipId', assetController.getAssetDetails);
+router.get('/assets/:ipId/transactions', assetController.getAssetTransactions);
+router.get('/assets/:ipId/top-licensees', assetController.getTopLicensees);
+
+// Dashboard stats endpoint used by ExplorerPage
+router.get('/stats', assetController.getStats);
+
+// Backwards-compatible portfolio stats endpoint (optional)
+router.get('/portfolio/:owner/stats', assetController.getPortfolioStats);
 
 module.exports = router;

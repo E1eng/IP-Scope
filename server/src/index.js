@@ -1,38 +1,23 @@
+
+// server/src/index.js
+// server/src/index.js (paling atas)
 require('dotenv').config();
+
 const express = require('express');
 const cors = require('cors');
-const apiRoutes = require('./routes');
-
-// --- VALIDASI ENVIRONMENT VARIABLE ---
-// STORY_PROTOCOL_API_KEY digunakan untuk Assets API
-if (!process.env.STORY_PROTOCOL_API_KEY) {
-    console.error("\nFATAL ERROR: STORY_PROTOCOL_API_KEY is not set in the .env file.");
-    console.error("Please create a .env file and add your Story Protocol Assets API key.");
-    process.exit(1); 
-}
-// STORYSCAN_API_KEY digunakan untuk Transactions API
-if (!process.env.STORYSCAN_API_KEY) {
-    console.error("\nFATAL ERROR: STORYSCAN_API_KEY is not set in the .env file.");
-    console.error("Please create a .env file and add your Story Protocol Transactions API key.");
-    process.exit(1); 
-}
-// ------------------------------------
+const routes = require('./routes/index.js');
 
 const app = express();
-const PORT = process.env.PORT || 3001;
 
-// Middleware
-app.use(cors()); 
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(cors());
 
-// Routes
-app.use('/api', apiRoutes);
+// mount API under /api
+app.use('/api', routes);
 
-// Root endpoint
-app.get('/', (req, res) => {
-  res.send('IP Asset Search Backend is running!');
-});
+// health
+app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
-app.listen(PORT, () => {
-  console.log(`Server is listening on port ${PORT}`);
-});
+const PORT = process.env.PORT || 3001;
+app.listen(PORT, () => console.log(`Server listening on ${PORT}`));

@@ -185,6 +185,7 @@ module.exports = {
   getTopLicensees,
   getStats,
   getPortfolioStats,
+  // progress endpoints are added at router level
   getStatsTimeSeries,
   getAssetLeaderboard,
   getLicenseeLeaderboard,

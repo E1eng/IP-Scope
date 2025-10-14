@@ -126,6 +126,112 @@ const getTokenPrice = (symbol) => {
     return null;
 };
 
+// --- Progress tracking for streaming aggregation ---
+const progressByOwner = new Map(); // owner => { running, totalAssets, processedAssets, percent, displayPartial, updatedAt }
+
+const updateProgress = (owner, patch) => {
+    const prev = progressByOwner.get(owner) || { running: false, totalAssets: 0, processedAssets: 0, percent: 0, displayPartial: '$0.00 USDT', updatedAt: Date.now() };
+    const next = { ...prev, ...patch, updatedAt: Date.now() };
+    progressByOwner.set(owner, next);
+    return next;
+};
+
+const getProgress = (owner) => {
+    return progressByOwner.get(owner) || { running: false, totalAssets: 0, processedAssets: 0, percent: 0, displayPartial: '$0.00 USDT', updatedAt: null };
+};
+
+const startPortfolioAggregation = async (ownerAddress) => {
+    if (!storyApiKey) throw new Error('STORY_PROTOCOL_API_KEY is not set');
+    if (!ownerAddress) throw new Error('ownerAddress required');
+
+    const existing = progressByOwner.get(ownerAddress);
+    if (existing && existing.running) {
+        return { alreadyRunning: true };
+    }
+
+    // Initialize progress
+    updateProgress(ownerAddress, { running: true, totalAssets: 0, processedAssets: 0, percent: 0, displayPartial: '$0.00 USDT' });
+
+    // Kick off async task (fire-and-forget)
+    (async () => {
+        try {
+            const MAX_ASSET_LIMIT = 200;
+            const assetResp = await getAssetsByOwner(ownerAddress, MAX_ASSET_LIMIT, 0);
+            const allAssets = assetResp.data || [];
+            const totalAssets = assetResp.pagination?.total || allAssets.length;
+            updateProgress(ownerAddress, { totalAssets });
+
+            const totalsByToken = new Map(); // symbol => { totalRaw: BigInt, decimals, usdt: Decimal }
+            const BATCH_SIZE = 5;
+            let processedAssets = 0;
+
+            for (let i = 0; i < allAssets.length; i += BATCH_SIZE) {
+                const slice = allAssets.slice(i, i + BATCH_SIZE);
+                const details = await Promise.all(slice.map(async (asset) => {
+                    try {
+                        const txs = await fetchRoyaltyTxDetailsForAsset(asset.ipId);
+                        return { asset, txs };
+                    } catch {
+                        return { asset, txs: [] };
+                    }
+                }));
+
+                for (const { txs } of details) {
+                    for (const tx of txs) {
+                        const symbol = tx.symbol || 'UNKNOWN';
+                        const decimals = tx.decimals || 18;
+                        const usdt = computeUsdtValue(tx.amount, decimals, tx.exchangeRateUsd || 0);
+                        const existingTok = totalsByToken.get(symbol) || { totalRaw: 0n, decimals, usdt: new Decimal(0) };
+                        existingTok.totalRaw = (existingTok.totalRaw || 0n) + (tx.amount || 0n);
+                        if (!existingTok.decimals) existingTok.decimals = decimals;
+                        existingTok.usdt = existingTok.usdt.add(usdt);
+                        totalsByToken.set(symbol, existingTok);
+                    }
+                }
+
+                processedAssets += details.length;
+                const percent = totalAssets > 0 ? Math.min(100, Math.round((processedAssets / totalAssets) * 100)) : 0;
+                // Build partial display string (prefer WIP if present)
+                let partialUsdt = new Decimal(0);
+                let wipRaw = 0n; let wipDecimals = 18;
+                for (const [sym, data] of totalsByToken.entries()) {
+                    partialUsdt = partialUsdt.add(data.usdt || 0);
+                    if (sym === 'WIP') { wipRaw = (data.totalRaw || 0n); wipDecimals = data.decimals || 18; }
+                }
+                const displayPartial = (wipRaw && wipRaw > 0n)
+                    ? `${formatTokenAmountWithDecimals(wipRaw, wipDecimals, 4)} WIP (${formatUsdtCurrency(partialUsdt)})`
+                    : `${formatUsdtCurrency(partialUsdt)}`;
+                updateProgress(ownerAddress, { processedAssets, percent, displayPartial, running: true });
+            }
+
+            // Finalize: compute full result and populate cache
+            let finalUsdt = new Decimal(0);
+            for (const [, d] of totalsByToken.entries()) finalUsdt = finalUsdt.add(d.usdt || 0);
+            const result = {
+                totalAssets,
+                totalRoyalties: formatUsdtCurrency(finalUsdt),
+                overallDisputeStatus: '0',
+                breakdownByToken: Array.from(totalsByToken.entries()).map(([symbol, d]) => ({
+                    symbol,
+                    address: null,
+                    amountFormatted: formatTokenAmountWithDecimals(d.totalRaw || 0n, d.decimals || 18, 6),
+                    rawAmount: (d.totalRaw || 0n).toString(),
+                    decimals: d.decimals || 18,
+                    usdtValue: Number((d.usdt || new Decimal(0)).toFixed(2))
+                })),
+                displayTotal: getProgress(ownerAddress).displayPartial
+            };
+            cache.portfolioStatsByOwner.set(ownerAddress, withTtl(result));
+            updateProgress(ownerAddress, { running: false, percent: 100 });
+        } catch (e) {
+            console.error('[AGGREGATOR] Failed aggregation job', e);
+            updateProgress(ownerAddress, { running: false });
+        }
+    })();
+
+    return { started: true };
+};
+
 /**
  * Generic fetch wrapper for Story APIs (assets/transactions)
  * - returns normalized shape for assets and transactions
@@ -795,5 +901,8 @@ module.exports = {
     getPortfolioTimeSeries,
     getAssetLeaderboard,
     getPortfolioLicensees,
-    getAssetsStatusSummary
+    getAssetsStatusSummary,
+    // streaming/progress helpers
+    startPortfolioAggregation,
+    getProgress
 };

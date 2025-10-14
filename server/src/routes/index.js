@@ -3,6 +3,7 @@ const express = require('express');
 const router = express.Router();
 
 const assetController = require('../controllers/asset.controller.js');
+const svc = require('../services/storyProtocol.service.js');
 const axios = require('axios');
 
 // Search / list assets used by ExplorerPage
@@ -22,6 +23,29 @@ router.get('/stats/timeseries', assetController.getStatsTimeSeries);
 router.get('/stats/leaderboard/assets', assetController.getAssetLeaderboard);
 router.get('/stats/leaderboard/licensees', assetController.getLicenseeLeaderboard);
 router.get('/stats/assets-status', assetController.getAssetsStatus);
+
+// Streaming/progress endpoints
+router.post('/stats/progress/start', async (req, res) => {
+  try {
+    const owner = req.query.ownerAddress;
+    if (!owner) return res.status(400).json({ message: 'ownerAddress query param required' });
+    const result = await svc.startPortfolioAggregation(owner);
+    return res.json(result);
+  } catch (e) {
+    return res.status(500).json({ message: 'failed to start aggregation', error: e.message });
+  }
+});
+
+router.get('/stats/progress', async (req, res) => {
+  try {
+    const owner = req.query.ownerAddress;
+    if (!owner) return res.status(400).json({ message: 'ownerAddress query param required' });
+    const progress = await svc.getProgress(owner);
+    return res.json(progress);
+  } catch (e) {
+    return res.status(500).json({ message: 'failed to read progress', error: e.message });
+  }
+});
 
 // StoryScan address counters passthrough (rate-limited by StoryScan itself)
 router.get('/addresses/:address_hash/counters', async (req, res) => {

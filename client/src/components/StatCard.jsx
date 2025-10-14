@@ -16,14 +16,65 @@ const Icons = ({ type }) => {
     }
 }
 
-function StatCard({ title, value, isWarning = false, icon }) {
+// Loading Skeleton Component
+const LoadingSkeleton = () => (
+    <div className="animate-pulse">
+        <div className="h-4 bg-gray-700 rounded w-24 mb-3"></div>
+        <div className="h-8 bg-gray-700 rounded w-32"></div>
+    </div>
+);
+
+// Error State Component
+const ErrorState = ({ message }) => (
+    <div className="text-red-400">
+        <p className="text-sm font-semibold mb-1">Error Loading</p>
+        <p className="text-xs text-gray-500">{message || 'Failed to load data'}</p>
+    </div>
+);
+
+function StatCard({ title, value, isWarning = false, icon, isLoading = false, error = null, tooltip = null }) {
+    // Determine if value indicates an error state
+    const isError = error || value === 'Error' || value === 'N/A';
+    
     return (
-        <div className={`bg-gray-800 p-6 rounded-xl border ${isWarning ? 'border-red-500' : 'border-gray-700'} shadow-xl`}>
+        <div className={`bg-gray-800 p-6 rounded-xl border ${isWarning ? 'border-red-500' : isError ? 'border-yellow-600/50' : 'border-gray-700'} shadow-xl transition-all duration-200 hover:shadow-2xl relative group`}>
+            {/* Tooltip */}
+            {tooltip && (
+                <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="bg-gray-950 text-xs text-gray-300 p-2 rounded-lg shadow-lg max-w-xs whitespace-normal">
+                        {tooltip}
+                    </div>
+                </div>
+            )}
+            
             <div className="flex justify-between items-start">
                 <p className="text-sm text-gray-400 uppercase tracking-wider">{title}</p>
                 {icon && <Icons type={icon} />}
             </div>
-            <p className={`text-3xl font-bold mt-2 ${isWarning ? 'text-red-400' : 'text-white'}`}>{value}</p>
+            
+            <div className="mt-2">
+                {isLoading ? (
+                    <LoadingSkeleton />
+                ) : error ? (
+                    <ErrorState message={error} />
+                ) : (
+                    <>
+                        <p className={`text-3xl font-bold ${isWarning ? 'text-red-400' : isError ? 'text-yellow-500' : 'text-white'}`}>
+                            {value}
+                        </p>
+                        {isError && value === 'N/A' && (
+                            <p className="text-xs text-gray-500 mt-1">No data available yet</p>
+                        )}
+                    </>
+                )}
+            </div>
+            
+            {/* Loading indicator overlay */}
+            {isLoading && (
+                <div className="absolute inset-0 bg-gray-900/50 rounded-xl flex items-center justify-center">
+                    <div className="animate-spin h-6 w-6 border-2 border-purple-400 border-t-transparent rounded-full"></div>
+                </div>
+            )}
         </div>
     );
 }

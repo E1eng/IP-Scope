@@ -30,6 +30,8 @@ function ExplorerPage() {
   const [selectedAsset, setSelectedAsset] = useState(null);
   
   const [stats, setStats] = useState({ totalRoyalties: 'N/A', totalAssets: '0', overallDisputeStatus: '0' });
+  const [isLoadingStats, setIsLoadingStats] = useState(false);
+  const [statsError, setStatsError] = useState(null);
 
 
   // Efek untuk mengambil statistik dashboard (REAL)
@@ -45,34 +47,51 @@ function ExplorerPage() {
 
         if (!addressForStats) {
             setStats(prev => ({ ...prev, totalRoyalties: 'N/A', overallDisputeStatus: '0' }));
+            setIsLoadingStats(false);
+            setStatsError(null);
             return;
         }
 
+        // 2. START loading advanced stats
+        setIsLoadingStats(true);
+        setStatsError(null);
+
         try {
-            // 2. Panggil endpoint /stats untuk mendapatkan Royalties dan Dispute Status
+            // 3. Panggil endpoint /stats untuk mendapatkan Royalties dan Dispute Status
             const params = new URLSearchParams({ ownerAddress: addressForStats });
-            const response = await axios.get(`${API_BASE_URL}/stats?${params.toString()}`);
+            const response = await axios.get(`${API_BASE_URL}/stats?${params.toString()}`, { timeout: 60000 }); // 60s timeout
             
-            // 3. UPDATE ADVANCED STATS (Royalties & Dispute Status)
+            // 4. UPDATE ADVANCED STATS (Royalties & Dispute Status)
             setStats(prev => ({
                 ...prev, 
                 totalRoyalties: response.data.totalRoyalties,
                 overallDisputeStatus: response.data.overallDisputeStatus
             }));
+            
+            setIsLoadingStats(false);
+            setStatsError(null);
 
         } catch (err) {
             console.error("Failed to fetch dashboard stats:", err);
+            
+            const errorMsg = err.code === 'ECONNABORTED' 
+                ? 'Request timeout. Large portfolio detected.' 
+                : err.response?.data?.message || 'Failed to load stats';
+            
             // Pada kegagalan, tampilkan 'Error'
             setStats(prev => ({ 
                 ...prev, 
                 totalRoyalties: 'Error', 
                 overallDisputeStatus: 'Error' 
             }));
+            
+            setIsLoadingStats(false);
+            setStatsError(errorMsg);
         }
     };
     // Fetch stats setiap kali alamat yang berhasil terdeteksi berubah ATAU totalResults berubah.
     fetchDashboardStats();
-  }, [currentAddress, currentTokenContract, totalResults, updateSearchState, API_BASE_URL]);
+  }, [currentAddress, currentTokenContract, totalResults]);
 
 
   // Helper untuk melakukan satu panggilan API
@@ -254,15 +273,28 @@ function ExplorerPage() {
         {/* Header Dashboard Stats */}
         {hasSearched && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-                <StatCard title="Total Royalties Collected" value={stats.totalRoyalties} icon="royalty" />
-                {/* FIX: Menggunakan stat card total asset dari Context yang disinkronkan */}
-                <StatCard title="Total IP Assets Found" value={stats.totalAssets.toLocaleString()} icon="asset" /> 
-                {/* FIX: Mengganti judul dari "Overall Dispute Status" menjadi "Total Dispute Status" */}
+                <StatCard 
+                    title="Total Royalties Collected" 
+                    value={stats.totalRoyalties} 
+                    icon="royalty" 
+                    isLoading={isLoadingStats}
+                    error={statsError}
+                    tooltip="Aggregated royalty payments across all your IP assets"
+                />
+                <StatCard 
+                    title="Total IP Assets Found" 
+                    value={stats.totalAssets} 
+                    icon="asset"
+                    tooltip="Number of IP assets registered under this address"
+                /> 
                 <StatCard 
                     title="Total Dispute Status" 
                     value={stats.overallDisputeStatus === 'None' ? '0' : stats.overallDisputeStatus} 
                     icon="license" 
-                    isWarning={stats.overallDisputeStatus === 'Active'} 
+                    isWarning={stats.overallDisputeStatus === 'Active'}
+                    isLoading={isLoadingStats}
+                    error={statsError}
+                    tooltip="Dispute status across your portfolio (Active/Pending/None)"
                 />
             </div>
         )}

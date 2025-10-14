@@ -143,7 +143,7 @@ const TopLicenseesTab = ({ ipId }) => {
                         </p>
                     </div>
                     <div className="text-right">
-                        <p className="font-bold text-sm text-green-400">{lic.totalValue}</p>
+                        <p className="font-bold text-sm text-green-400">{lic.totalValue || lic.totalValueFormatted}</p>
                         <p className="text-gray-500 mt-0.5">{lic.count} payments</p>
                     </div>
                 </div>

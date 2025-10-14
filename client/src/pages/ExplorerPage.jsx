@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import axios from 'axios';
 import StatCard from '../components/StatCard';
 import AssetTable from '../components/AssetTable'; 
@@ -36,6 +36,8 @@ function ExplorerPage() {
 
 
   // Efek untuk mengambil statistik dashboard (REAL)
+  const progressIntervalRef = useRef(null);
+
   useEffect(() => {
     const fetchDashboardStats = async () => {
         const addressForStats = currentAddress || currentTokenContract;
@@ -53,42 +55,19 @@ function ExplorerPage() {
 
         try {
             setStatsLoading(true);
-            // 2. Panggil endpoint /stats untuk mendapatkan Royalties dan Dispute Status
             const params = new URLSearchParams({ ownerAddress: addressForStats });
-          // Kick off streaming aggregation (fire-and-forget)
-          try { await axios.post(`${API_BASE_URL}/stats/progress/start?${params.toString()}`); } catch {}
-          // Start polling progress
-          let cancelled = false;
-          const poll = async () => {
-            try {
-              const prog = await axios.get(`${API_BASE_URL}/stats/progress?${params.toString()}`);
-              if (!cancelled) setProgress(prog.data || { running: false, percent: 0, displayPartial: '$0.00 USDT' });
-            } catch {}
-          };
-          // initial poll and interval
-          await poll();
-          const intId = setInterval(poll, 1500);
-            const response = await axios.get(`${API_BASE_URL}/stats?${params.toString()}`);
-            
-            // 3. UPDATE ADVANCED STATS (Royalties & Dispute Status)
-            setStats(prev => ({
-                ...prev, 
-            totalRoyalties: response.data.displayTotal || response.data.totalRoyalties,
-                overallDisputeStatus: response.data.overallDisputeStatus
-            }));
-            // 4. Ambil leaderboard aset (USDT) untuk peta total per aset
-            try {
-                setLeaderboardLoading(true);
-                const lbRes = await axios.get(`${API_BASE_URL}/stats/leaderboard/assets?${params.toString()}&limit=500`);
-                const map = {};
-                const rows = lbRes.data?.data || lbRes.data || [];
-                rows.forEach(row => { if (row?.ipId) map[row.ipId] = row.usdtValue; });
-                setRoyaltyTotalsMap(map);
-            } finally {
-                setLeaderboardLoading(false);
-            }
-
-            // 5. Address counters (hanya jika wallet address)
+            // Start async aggregation
+            try { await axios.post(`${API_BASE_URL}/stats/progress/start?${params.toString()}`); } catch {}
+            // Poll progress
+            const poll = async () => {
+              try {
+                const prog = await axios.get(`${API_BASE_URL}/stats/progress?${params.toString()}`);
+                setProgress(prog.data || { running: false, percent: 0, displayPartial: '$0.00 USDT' });
+              } catch {}
+            };
+            await poll();
+            progressIntervalRef.current = setInterval(poll, 1500);
+            // Fetch counters early (non-blocking)
             if (currentAddress) {
               try {
                 const countersResp = await axios.get(`${API_BASE_URL}/addresses/${currentAddress}/counters`);
@@ -99,7 +78,6 @@ function ExplorerPage() {
             } else {
               setCounters(null);
             }
-          clearInterval(intId);
         } catch (err) {
             console.error("Failed to fetch dashboard stats:", err);
             // Pada kegagalan, tampilkan 'Error'
@@ -114,6 +92,45 @@ function ExplorerPage() {
     };
     fetchDashboardStats();
   }, [currentAddress, currentTokenContract, totalResults, updateSearchState, API_BASE_URL]);
+
+  // Finalize when progress done
+  useEffect(() => {
+    const addressForStats = currentAddress || currentTokenContract;
+    if (!addressForStats) return;
+    const params = new URLSearchParams({ ownerAddress: addressForStats });
+    const shouldFinalize = (!progress.running && progress.percent >= 100) || progress.percent === 100;
+    if (!shouldFinalize) return;
+    const finalize = async () => {
+      try {
+        setStatsLoading(true);
+        const response = await axios.get(`${API_BASE_URL}/stats?${params.toString()}`);
+        setStats(prev => ({
+          ...prev,
+          totalRoyalties: response.data.displayTotal || response.data.totalRoyalties,
+          overallDisputeStatus: response.data.overallDisputeStatus,
+          breakdownByToken: response.data.breakdownByToken || []
+        }));
+        // leaderboard after stats
+        try {
+          setLeaderboardLoading(true);
+          const lbRes = await axios.get(`${API_BASE_URL}/stats/leaderboard/assets?${params.toString()}&limit=500`);
+          const map = {};
+          const rows = lbRes.data?.data || lbRes.data || [];
+          rows.forEach(row => { if (row?.ipId) map[row.ipId] = row.usdtValue; });
+          setRoyaltyTotalsMap(map);
+        } finally {
+          setLeaderboardLoading(false);
+        }
+      } finally {
+        setStatsLoading(false);
+        if (progressIntervalRef.current) {
+          clearInterval(progressIntervalRef.current);
+          progressIntervalRef.current = null;
+        }
+      }
+    };
+    finalize();
+  }, [progress.percent, progress.running, currentAddress, currentTokenContract, API_BASE_URL]);
 
 
   // Helper untuk melakukan satu panggilan API (tetap sama)
@@ -302,7 +319,7 @@ function ExplorerPage() {
         {/* Header Dashboard Stats */}
         {hasSearched && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-                <StatCard title="Total Royalties Collected" value={progress.running ? (progress.displayPartial || stats.totalRoyalties) : stats.totalRoyalties} icon="royalty" isLoading={statsLoading} progressPercent={progress.running ? progress.percent : null} />
+                <StatCard title="Total Royalties Collected" value={progress.running ? (progress.displayPartial || stats.totalRoyalties) : stats.totalRoyalties} icon="royalty" isLoading={statsLoading} progressPercent={progress.running ? progress.percent : null} tooltip={stats.breakdownByToken ? stats.breakdownByToken.map(b=>`${b.symbol}: ${b.amountFormatted} (~$${(b.usdtValue||0).toLocaleString()})`).join(' \n') : null} />
                 <StatCard title="Total IP Assets Found" value={stats.totalAssets.toLocaleString()} icon="asset" /> 
                 <StatCard 
                     title="Total Dispute Status" 

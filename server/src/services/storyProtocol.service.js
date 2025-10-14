@@ -193,9 +193,9 @@ const mapWithRpsLimit = async (items, rps, mapper) => {
 };
 
 /**
- * Fetch all RoyaltyPaid events for an ipId with pagination and lowercase fallback
+ * Fetch all RoyaltyPaid events for an ipId with pagination (loop until exhausted) and lowercase fallback
  */
-const fetchRoyaltyEventsPaginated = async (ipId, pageSize = 200, maxPages = 200) => {
+const fetchRoyaltyEventsPaginated = async (ipId, pageSize = 200) => {
     const candidates = [ipId];
     const lc = ipId?.toLowerCase?.();
     if (lc && lc !== ipId) candidates.push(lc);
@@ -203,7 +203,8 @@ const fetchRoyaltyEventsPaginated = async (ipId, pageSize = 200, maxPages = 200)
     for (const candidateId of candidates) {
         const allEvents = [];
         let offset = 0;
-        for (let page = 0; page < maxPages; page++) {
+        // Loop until API returns empty or less than pageSize
+        for (let page = 0; ; page++) {
             const body = {
                 where: { eventTypes: ["RoyaltyPaid"], ipIds: [candidateId] },
                 pagination: { limit: pageSize, offset }

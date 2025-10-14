@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import axios from 'axios';
 import StatCard from '../components/StatCard';
 import AssetTable from '../components/AssetTable'; 
@@ -28,7 +28,10 @@ function ExplorerPage() {
   const [selectedAsset, setSelectedAsset] = useState(null);
   
   const [stats, setStats] = useState({ totalRoyalties: 'N/A', totalAssets: '0', overallDisputeStatus: '0' });
+  const [statsLoading, setStatsLoading] = useState(false);
+  const [leaderboardLoading, setLeaderboardLoading] = useState(false);
   const [royaltyTotalsMap, setRoyaltyTotalsMap] = useState({});
+  const [counters, setCounters] = useState(null);
 
 
   // Efek untuk mengambil statistik dashboard (REAL)
@@ -48,6 +51,7 @@ function ExplorerPage() {
         }
 
         try {
+            setStatsLoading(true);
             // 2. Panggil endpoint /stats untuk mendapatkan Royalties dan Dispute Status
             const params = new URLSearchParams({ ownerAddress: addressForStats });
             const response = await axios.get(`${API_BASE_URL}/stats?${params.toString()}`);
@@ -55,17 +59,31 @@ function ExplorerPage() {
             // 3. UPDATE ADVANCED STATS (Royalties & Dispute Status)
             setStats(prev => ({
                 ...prev, 
-                totalRoyalties: response.data.totalRoyalties,
+                totalRoyalties: response.data.displayTotal || response.data.totalRoyalties,
                 overallDisputeStatus: response.data.overallDisputeStatus
             }));
             // 4. Ambil leaderboard aset (USDT) untuk peta total per aset
             try {
-                const lbRes = await axios.get(`${API_BASE_URL}/stats/leaderboard/assets?${params.toString()}&limit=200`);
+                setLeaderboardLoading(true);
+                const lbRes = await axios.get(`${API_BASE_URL}/stats/leaderboard/assets?${params.toString()}&limit=500`);
                 const map = {};
-                (lbRes.data?.data || []).forEach(row => { map[row.ipId] = row.usdtValue; });
+                const rows = lbRes.data?.data || lbRes.data || [];
+                rows.forEach(row => { if (row?.ipId) map[row.ipId] = row.usdtValue; });
                 setRoyaltyTotalsMap(map);
-            } catch (e) {
-                console.warn('Failed to fetch asset leaderboard totals', e);
+            } finally {
+                setLeaderboardLoading(false);
+            }
+
+            // 5. Address counters (hanya jika wallet address)
+            if (currentAddress) {
+              try {
+                const countersResp = await axios.get(`${API_BASE_URL}/addresses/${currentAddress}/counters`);
+                setCounters(countersResp.data || null);
+              } catch (e) {
+                setCounters(null);
+              }
+            } else {
+              setCounters(null);
             }
         } catch (err) {
             console.error("Failed to fetch dashboard stats:", err);
@@ -75,6 +93,8 @@ function ExplorerPage() {
                 totalRoyalties: 'Error', 
                 overallDisputeStatus: 'Error' 
             }));
+        } finally {
+            setStatsLoading(false);
         }
     };
     fetchDashboardStats();
@@ -238,6 +258,15 @@ function ExplorerPage() {
   };
 
 
+  // Urutkan assets berdasarkan total royalty USDT desc ketika data tersedia
+  const sortedResults = useMemo(() => {
+    if (!results || results.length === 0) return [];
+    if (!royaltyTotalsMap || Object.keys(royaltyTotalsMap).length === 0) return results;
+    const copy = [...results];
+    copy.sort((a,b) => (royaltyTotalsMap[b.ipId] || 0) - (royaltyTotalsMap[a.ipId] || 0));
+    return copy;
+  }, [results, royaltyTotalsMap]);
+
   return (
     <div className="space-y-8">
         <h1 className="text-3xl font-extrabold text-white mb-6">RoyaltyFlow Dashboard</h1>
@@ -258,7 +287,7 @@ function ExplorerPage() {
         {/* Header Dashboard Stats */}
         {hasSearched && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-                <StatCard title="Total Royalties Collected" value={stats.totalRoyalties} icon="royalty" />
+                <StatCard title="Total Royalties Collected" value={stats.totalRoyalties} icon="royalty" isLoading={statsLoading} />
                 <StatCard title="Total IP Assets Found" value={stats.totalAssets.toLocaleString()} icon="asset" /> 
                 <StatCard 
                     title="Total Dispute Status" 
@@ -275,11 +304,12 @@ function ExplorerPage() {
                 <h2 className="text-2xl font-bold text-white border-b border-gray-700 pb-2">2. IP Asset Portfolio</h2>
 
                 <AssetTable
-                    assets={results}
+                    assets={sortedResults}
                     isLoading={isLoading}
                     error={error}
                     onAssetClick={handleViewDetails} // Meneruskan fungsi yang mendapatkan objek aset
                     royaltyTotalsMap={royaltyTotalsMap}
+                    isRoyaltyTotalsLoading={leaderboardLoading}
                 />
                 
                 <div className="text-center mt-10">

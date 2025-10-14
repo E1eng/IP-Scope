@@ -51,8 +51,9 @@ const getAssetTransactions = async (req, res) => {
     const ipId = req.params.ipId;
     if (!ipId) return res.status(400).json({ message: 'ipId required' });
 
-    const list = await service.getRoyaltyTransactions(ipId);
-    return res.json({ count: list.length, data: list });
+  const list = await service.getRoyaltyTransactions(ipId);
+  // Return array directly for frontend compatibility
+  return res.json(list);
   } catch (e) {
     console.error('[CONTROLLER] getAssetTransactions error', e);
     return res.status(500).json({ message: 'Internal server error', error: e.message });
@@ -68,8 +69,9 @@ const getTopLicensees = async (req, res) => {
     const ipId = req.params.ipId;
     if (!ipId) return res.status(400).json({ message: 'ipId required' });
 
-    const top = await service.getTopLicensees(ipId);
-    return res.json({ count: top.length, data: top });
+  const top = await service.getTopLicensees(ipId);
+  // Return array directly for frontend compatibility
+  return res.json(top);
   } catch (e) {
     console.error('[CONTROLLER] getTopLicensees error', e);
     return res.status(500).json({ message: 'Internal server error', error: e.message });

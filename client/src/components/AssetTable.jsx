@@ -65,7 +65,7 @@ const WalletFilterForm = ({ onFetch, initialOwnerAddress, isSubmitting }) => {
 };
 
 // --- Komponen Utama: AssetTable ---
-function AssetTable({ assets, isLoading, error, onAssetClick, royaltyTotalsMap }) {
+function AssetTable({ assets, isLoading, error, onAssetClick, royaltyTotalsMap, isRoyaltyTotalsLoading }) {
     const formatUsdt = (num) => {
         if (num === null || num === undefined || isNaN(num)) return '-';
         try {
@@ -137,7 +137,9 @@ function AssetTable({ assets, isLoading, error, onAssetClick, royaltyTotalsMap }
                             <td className="p-4 text-gray-300">{asset.mediaType}</td>
                             <td className="p-4 text-gray-300">{new Date(asset.createdAt).toLocaleDateString()}</td>
                             <td className="p-4 font-semibold text-green-300">
-                                {formatUsdt(royaltyTotalsMap?.[asset.ipId])}
+                                {royaltyTotalsMap && royaltyTotalsMap.hasOwnProperty(asset.ipId)
+                                  ? formatUsdt(royaltyTotalsMap[asset.ipId])
+                                  : (isRoyaltyTotalsLoading ? 'Loading…' : '-')}
                             </td>
                             {/* Dispute Status Cell */}
                             <td className="p-4">

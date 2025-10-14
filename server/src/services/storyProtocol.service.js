@@ -195,7 +195,7 @@ const mapWithRpsLimit = async (items, rps, mapper) => {
 /**
  * Fetch all RoyaltyPaid events for an ipId with pagination and lowercase fallback
  */
-const fetchRoyaltyEventsPaginated = async (ipId, pageSize = 200, maxPages = 50) => {
+const fetchRoyaltyEventsPaginated = async (ipId, pageSize = 200, maxPages = 200) => {
     const candidates = [ipId];
     const lc = ipId?.toLowerCase?.();
     if (lc && lc !== ipId) candidates.push(lc);
@@ -293,7 +293,7 @@ const getAndAggregateRoyaltyEventsFromApi = async (ipId) => {
     }
     
     // Fetch ALL RoyaltyPaid events with pagination and lowercase fallback
-    const events = await fetchRoyaltyEventsPaginated(ipId, 100, 100);
+    const events = await fetchRoyaltyEventsPaginated(ipId, 200, 200);
     if (!events || events.length === 0) {
         console.log(`[AGGR RESULT] IP ID ${ipId}: No RoyaltyPaid events found.`);
         return { totalRoyaltiesByToken: new Map(), licenseeMap: new Map() };
@@ -398,7 +398,7 @@ const getAssetsByOwner = async (ownerAddress, limit = 20, offset = 0, tokenContr
  */
 const fetchRoyaltyTxDetailsForAsset = async (ipId) => {
     if (!storyApiKey) throw new Error("STORY_PROTOCOL_API_KEY is not set");
-    const events = await fetchRoyaltyEventsPaginated(ipId, 100, 100);
+    const events = await fetchRoyaltyEventsPaginated(ipId, 200, 200);
     if (!Array.isArray(events) || events.length === 0) return [];
 
     // Use rate-limited mapper to respect StoryScan 10 rps
@@ -444,9 +444,20 @@ const getPortfolioStats = async (ownerAddress) => {
     let overallDisputeStatus = 'None';
     let activeDisputeCount = 0;
 
-    for (const asset of allAssets) {
-        try {
-            const txs = await fetchRoyaltyTxDetailsForAsset(asset.ipId);
+    // Concurrency control: process assets in small batches to keep UI responsive
+    const BATCH_SIZE = 5;
+    for (let i = 0; i < allAssets.length; i += BATCH_SIZE) {
+        const slice = allAssets.slice(i, i + BATCH_SIZE);
+        const details = await Promise.all(slice.map(async (asset) => {
+            try {
+                const txs = await fetchRoyaltyTxDetailsForAsset(asset.ipId);
+                return { asset, txs };
+            } catch (e) {
+                console.error(`Error processing IP ID ${asset.ipId}: ${e.message}`);
+                return { asset, txs: [] };
+            }
+        }));
+        for (const { asset, txs } of details) {
             for (const tx of txs) {
                 const symbol = tx.symbol || 'UNKNOWN';
                 const decimals = tx.decimals || 18;
@@ -457,23 +468,25 @@ const getPortfolioStats = async (ownerAddress) => {
                 existing.usdt = existing.usdt.add(usdt);
                 portfolioTotalsByToken.set(symbol, existing);
             }
-
-            // Dispute logic
             if (asset.disputeStatus === 'Active') {
                 overallDisputeStatus = 'Active';
                 activeDisputeCount++;
             } else if (asset.disputeStatus === 'Pending' && overallDisputeStatus === 'None') {
                 overallDisputeStatus = 'Pending';
             }
-        } catch (e) {
-            console.error(`Error processing IP ID ${asset.ipId}: ${e.message}`);
         }
     }
 
-    // Sum total USDT
+    // Sum total USDT and cache WIP amount if present
     let totalUsdt = new Decimal(0);
-    for (const [, data] of portfolioTotalsByToken.entries()) {
+    let wipRaw = 0n;
+    let wipDecimals = 18;
+    for (const [symbol, data] of portfolioTotalsByToken.entries()) {
         totalUsdt = totalUsdt.add(data.usdt || 0);
+        if (symbol === 'WIP') {
+            wipRaw = (data.totalRaw || 0n);
+            wipDecimals = data.decimals || 18;
+        }
     }
 
     const result = {
@@ -487,7 +500,10 @@ const getPortfolioStats = async (ownerAddress) => {
             rawAmount: (d.totalRaw || 0n).toString(),
             decimals: d.decimals || 18,
             usdtValue: Number((d.usdt || new Decimal(0)).toFixed(2))
-        }))
+        })),
+        displayTotal: (wipRaw && wipRaw > 0n)
+            ? `${formatTokenAmountWithDecimals(wipRaw, wipDecimals, 4)} WIP (${formatUsdtCurrency(totalUsdt)})`
+            : `${formatUsdtCurrency(totalUsdt)}`
     };
     cache.portfolioStatsByOwner.set(ownerAddress, withTtl(result));
     return result;

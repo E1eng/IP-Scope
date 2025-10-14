@@ -101,7 +101,7 @@ function AssetTable({ assets, isLoading, error, onAssetClick }) {
                         <th className="p-4">Asset Title</th>
                         <th className="p-4">Media Type</th>
                         <th className="p-4">Date Created</th>
-                        <th className="p-4">Dispute Status</th> {/* NEW COLUMN */}
+                        <th className="p-4">Dispute Status</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -109,7 +109,7 @@ function AssetTable({ assets, isLoading, error, onAssetClick }) {
                         <tr 
                             key={asset.ipId} 
                             className="border-t border-gray-700 hover:bg-gray-700/50 cursor-pointer transition-colors"
-                            onClick={() => onAssetClick(asset.ipId)}
+                            onClick={() => onAssetClick(asset.ipId)} // FIX: Mengirim ipId sebagai string
                         >
                             {/* Image Column */}
                             <td className="p-2 w-16">
@@ -127,7 +127,7 @@ function AssetTable({ assets, isLoading, error, onAssetClick }) {
                             <td className="p-4 font-semibold">{asset.title}</td>
                             <td className="p-4 text-gray-300">{asset.mediaType}</td>
                             <td className="p-4 text-gray-300">{new Date(asset.createdAt).toLocaleDateString()}</td>
-                            {/* NEW: Dispute Status Cell */}
+                            {/* Dispute Status Cell */}
                             <td className="p-4">
                                 <span className={`text-xs font-bold px-2 py-1 rounded-full 
                                     ${asset.disputeStatus === 'Active' ? 'bg-red-500 text-white' : 

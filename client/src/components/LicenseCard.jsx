@@ -1,4 +1,6 @@
 import React from 'react';
+// Menggunakan DetailRow yang Anda berikan
+import DetailRow from './DetailRow'; 
 
 const StatPill = ({ label, value, colorClass }) => (
     <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${colorClass}`}>
@@ -7,11 +9,17 @@ const StatPill = ({ label, value, colorClass }) => (
 );
 
 const LicenseCard = ({ asset }) => {
-  const { pilTerms, royaltyPolicy } = asset;
+  // FIX: Ambil data dari lokasi API yang tepat (licenses[0])
+  const firstLicense = asset.licenses && asset.licenses.length > 0 ? asset.licenses[0] : null;
+  
+  // Jika firstLicense ada, ambil terms dan licensingConfig
+  const pilTerms = firstLicense?.terms;
+  const royaltyPolicy = firstLicense?.licensingConfig;
   
   const hasPilTerms = pilTerms && pilTerms.commercialUse !== undefined;
-  const hasRoyaltyPolicy = royaltyPolicy && royaltyPolicy.rate !== undefined;
-
+  // Periksa apakah kebijakan royalti memiliki rate yang valid (rate dalam Story Protocol biasanya angka integer 0-10000)
+  const hasRoyaltyPolicy = royaltyPolicy && royaltyPolicy.commercialRevShare !== undefined; 
+  
   if (!hasPilTerms && !hasRoyaltyPolicy) {
     return (
       <div className="bg-gray-800 p-4 rounded-lg text-gray-500 border border-gray-700/50">
@@ -23,14 +31,16 @@ const LicenseCard = ({ asset }) => {
   }
 
   // PIL Terms (Public IP License) Analysis
+  // Catatan: Menggunakan 'commercialUse' dari `pilTerms` API Response
   const termName = hasPilTerms && pilTerms.commercialUse ? 'Commercial' : 'Non-Commercial';
   const termColor = hasPilTerms && pilTerms.commercialUse ? 'bg-green-900/50 text-green-300' : 'bg-yellow-900/50 text-yellow-300';
   const transferColor = hasPilTerms && pilTerms.transferable ? 'bg-blue-900/50 text-blue-300' : 'bg-red-900/50 text-red-300';
   const derivativeColor = hasPilTerms && pilTerms.derivativesAllowed ? 'bg-purple-900/50 text-purple-300' : 'bg-red-900/50 text-red-300';
 
-  // Royalty Policy Analysis: Konversi 10000 menjadi 100%
-  const royaltyRate = hasRoyaltyPolicy && royaltyPolicy.rate ? `${(royaltyPolicy.rate / 10000).toFixed(2)}%` : '0.00%';
-
+  // Royalty Policy Analysis: commercialRevShare adalah integer (misal 5000000 = 5%)
+  const royaltyRate = hasRoyaltyPolicy ? `${(royaltyPolicy.commercialRevShare / 10000).toFixed(2)}%` : '0.00%';
+  const royaltyRateValue = hasRoyaltyPolicy ? royaltyPolicy.commercialRevShare : 0;
+  
   return (
   <div className="card bg-gradient-to-br from-gray-950 via-gray-900 to-gray-800 p-6 rounded-2xl shadow-xl border border-purple-900">
       <h4 className="font-extrabold text-lg mb-4 text-transparent bg-clip-text bg-gradient-to-r from-green-400 via-blue-400 to-purple-400 tracking-tight">
@@ -42,8 +52,13 @@ const LicenseCard = ({ asset }) => {
         <div className="mb-4 pb-4 border-b border-purple-900">
           <p className="text-sm font-light text-gray-300 mb-2">Royalty Policy</p>
           <div className="flex flex-wrap gap-3">
-            <StatPill label="Royalty Rate" value={royaltyRate} colorClass={royaltyPolicy.rate > 0 ? 'bg-cyan-900/50 text-cyan-300' : 'bg-gray-700 text-gray-400'} />
-            <StatPill label="Token" value={royaltyPolicy.payoutToken || 'ETH/Default'} colorClass="bg-gray-700 text-gray-400" />
+            <StatPill 
+              label="Royalty Rate" 
+              value={royaltyRate} 
+              colorClass={royaltyRateValue > 0 ? 'bg-cyan-900/50 text-cyan-300' : 'bg-gray-700 text-gray-400'} 
+            />
+            {/* Menggunakan token yang dispesifikasikan dalam terms */}
+            <StatPill label="Token" value={pilTerms.currency || 'ETH/Default'} colorClass="bg-gray-700 text-gray-400" /> 
           </div>
         </div>
       )}
@@ -59,7 +74,7 @@ const LicenseCard = ({ asset }) => {
           </div>
           {pilTerms.uri && (
             <p className="text-xs text-gray-500 mt-3 truncate font-light">
-              URI: {pilTerms.uri}
+              Terms URI: {pilTerms.uri}
             </p>
           )}
         </div>

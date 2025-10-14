@@ -10,7 +10,7 @@ function AssetDetailPage() {
     const [asset, setAsset] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState('');
-    const navigate = useNavigate(); // FIX: useNavigate sekarang tersedia
+    const navigate = useNavigate(); 
 
     useEffect(() => {
         const fetchAsset = async () => {
@@ -18,6 +18,7 @@ function AssetDetailPage() {
             setIsLoading(true);
             setError('');
             try {
+                // Memanggil endpoint detail
                 const response = await axios.get(`${API_BASE_URL}/assets/${id}/details`);
                 setAsset(response.data);
             } catch (err) {

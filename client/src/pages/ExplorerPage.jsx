@@ -28,6 +28,7 @@ function ExplorerPage() {
   const [selectedAsset, setSelectedAsset] = useState(null);
   
   const [stats, setStats] = useState({ totalRoyalties: 'N/A', totalAssets: '0', overallDisputeStatus: '0' });
+  const [royaltyTotalsMap, setRoyaltyTotalsMap] = useState({});
 
 
   // Efek untuk mengambil statistik dashboard (REAL)
@@ -57,7 +58,15 @@ function ExplorerPage() {
                 totalRoyalties: response.data.totalRoyalties,
                 overallDisputeStatus: response.data.overallDisputeStatus
             }));
-
+            // 4. Ambil leaderboard aset (USDT) untuk peta total per aset
+            try {
+                const lbRes = await axios.get(`${API_BASE_URL}/stats/leaderboard/assets?${params.toString()}&limit=200`);
+                const map = {};
+                (lbRes.data?.data || []).forEach(row => { map[row.ipId] = row.usdtValue; });
+                setRoyaltyTotalsMap(map);
+            } catch (e) {
+                console.warn('Failed to fetch asset leaderboard totals', e);
+            }
         } catch (err) {
             console.error("Failed to fetch dashboard stats:", err);
             // Pada kegagalan, tampilkan 'Error'
@@ -270,6 +279,7 @@ function ExplorerPage() {
                     isLoading={isLoading}
                     error={error}
                     onAssetClick={handleViewDetails} // Meneruskan fungsi yang mendapatkan objek aset
+                    royaltyTotalsMap={royaltyTotalsMap}
                 />
                 
                 <div className="text-center mt-10">

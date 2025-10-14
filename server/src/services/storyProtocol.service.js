@@ -88,6 +88,44 @@ const STORY_TRANSACTION_DETAIL_BASE_URL = `${STORYSCAN_API_BASE_URL}/transaction
 const storyApiKey = process.env.STORY_PROTOCOL_API_KEY;
 const storyScanApiKey = process.env.STORYSCAN_API_KEY;
 
+// --- Simple in-memory cache to speed up repeated heavy aggregations ---
+const CACHE_TTL_MS = parseInt(process.env.AGGREGATION_CACHE_TTL_MS || '300000', 10); // default 5 minutes
+const TX_DETAIL_TTL_MS = parseInt(process.env.TX_DETAIL_TTL_MS || '86400000', 10); // default 24 hours
+const TOKEN_PRICE_TTL_MS = parseInt(process.env.TOKEN_PRICE_TTL_MS || '1800000', 10); // default 30 minutes
+const nowMs = () => Date.now();
+const withTtl = (value) => ({ value, expiresAt: nowMs() + CACHE_TTL_MS });
+const isFresh = (entry) => entry && entry.expiresAt && entry.expiresAt > nowMs();
+
+const cache = {
+    portfolioStatsByOwner: new Map(), // key: owner
+    assetLeaderboardByOwner: new Map(), // key: owner
+    licenseeLeaderboardByOwner: new Map(), // key: owner
+    timeseriesByOwnerKey: new Map(), // key: `${owner}:${bucket}:${days}`
+    txDetailByHash: new Map(), // key: txHash -> { value, expiresAt }
+    tokenPriceBySymbol: new Map(), // key: symbol -> { value: Decimal, expiresAt }
+};
+
+const setTxDetailCache = (txHash, detail) => {
+    cache.txDetailByHash.set(txHash, { value: detail, expiresAt: nowMs() + TX_DETAIL_TTL_MS });
+};
+const getTxDetailCache = (txHash) => {
+    const entry = cache.txDetailByHash.get(txHash);
+    if (entry && entry.expiresAt > nowMs()) return entry.value;
+    return null;
+};
+const setTokenPrice = (symbol, price) => {
+    if (!symbol || price === null || price === undefined) return;
+    try {
+        const dec = new Decimal(price);
+        cache.tokenPriceBySymbol.set(symbol, { value: dec, expiresAt: nowMs() + TOKEN_PRICE_TTL_MS });
+    } catch {}
+};
+const getTokenPrice = (symbol) => {
+    const entry = cache.tokenPriceBySymbol.get(symbol);
+    if (entry && entry.expiresAt > nowMs()) return entry.value;
+    return null;
+};
+
 /**
  * Generic fetch wrapper for Story APIs (assets/transactions)
  * - returns normalized shape for assets and transactions
@@ -255,7 +293,7 @@ const getAndAggregateRoyaltyEventsFromApi = async (ipId) => {
     }
     
     // Fetch ALL RoyaltyPaid events with pagination and lowercase fallback
-    const events = await fetchRoyaltyEventsPaginated(ipId, 200, 50);
+    const events = await fetchRoyaltyEventsPaginated(ipId, 100, 100);
     if (!events || events.length === 0) {
         console.log(`[AGGR RESULT] IP ID ${ipId}: No RoyaltyPaid events found.`);
         return { totalRoyaltiesByToken: new Map(), licenseeMap: new Map() };
@@ -263,11 +301,13 @@ const getAndAggregateRoyaltyEventsFromApi = async (ipId) => {
 
     // Fetch StoryScan details with 10 rps cap
     const txHashes = events.map(ev => ev.transactionHash || ev.txHash || ev.hash || ev.transaction?.hash).filter(Boolean);
-    const detailed = await mapWithRpsLimit(txHashes, 10, async (txHash) =>
-        fetchTransactionDetailFromStoryScan(txHash)
-            .then(detail => ({ txHash, detail }))
-            .catch(() => ({ txHash, detail: { amount: 0n, decimals: 18, symbol: 'ETH', tokenAddress: null, exchangeRateUsd: null, from: null } }))
-    );
+    const detailed = await mapWithRpsLimit(txHashes, 10, async (txHash) => {
+        const cached = getTxDetailCache(txHash);
+        if (cached) return { txHash, detail: cached };
+        const detail = await fetchTransactionDetailFromStoryScan(txHash).catch(() => ({ amount: 0n, decimals: 18, symbol: 'ETH', tokenAddress: null, exchangeRateUsd: null, from: null }));
+        setTxDetailCache(txHash, detail);
+        return { txHash, detail };
+    });
 
     const totalRoyaltiesByToken = new Map();
     const licenseeMap = new Map();
@@ -358,12 +398,18 @@ const getAssetsByOwner = async (ownerAddress, limit = 20, offset = 0, tokenContr
  */
 const fetchRoyaltyTxDetailsForAsset = async (ipId) => {
     if (!storyApiKey) throw new Error("STORY_PROTOCOL_API_KEY is not set");
-    const events = await fetchRoyaltyEventsPaginated(ipId, 200, 50);
+    const events = await fetchRoyaltyEventsPaginated(ipId, 100, 100);
     if (!Array.isArray(events) || events.length === 0) return [];
 
     // Use rate-limited mapper to respect StoryScan 10 rps
     const txHashes = events.map(ev => ev.transactionHash || ev.txHash || ev.hash || ev.transaction?.hash).filter(Boolean);
-    const detailed = await mapWithRpsLimit(txHashes, 10, async (txHash) => fetchTransactionDetailFromStoryScan(txHash).then(detail => ({ txHash, detail })));
+    const detailed = await mapWithRpsLimit(txHashes, 10, async (txHash) => {
+        const cached = getTxDetailCache(txHash);
+        if (cached) return { txHash, detail: cached };
+        const detail = await fetchTransactionDetailFromStoryScan(txHash);
+        setTxDetailCache(txHash, detail);
+        return { txHash, detail };
+    });
     return detailed.map(d => ({
         txHash: d.txHash,
         timestampSec: d.detail?.timestamp || null,
@@ -379,13 +425,18 @@ const getPortfolioStats = async (ownerAddress) => {
     if (!storyApiKey) throw new Error("STORY_PROTOCOL_API_KEY is not set");
     if (!ownerAddress) return { totalAssets: 0, totalRoyalties: '$0.00 USDT', overallDisputeStatus: '0' };
 
+    const cached = cache.portfolioStatsByOwner.get(ownerAddress);
+    if (isFresh(cached)) return cached.value;
+
     const MAX_ASSET_LIMIT = 200;
     const assetResp = await getAssetsByOwner(ownerAddress, MAX_ASSET_LIMIT, 0);
     const allAssets = assetResp.data || [];
     const totalAssets = assetResp.pagination?.total || allAssets.length;
 
     if (allAssets.length === 0) {
-        return { totalAssets, totalRoyalties: '$0.00 USDT', overallDisputeStatus: '0' };
+        const empty = { totalAssets, totalRoyalties: '$0.00 USDT', overallDisputeStatus: '0' };
+        cache.portfolioStatsByOwner.set(ownerAddress, withTtl(empty));
+        return empty;
     }
 
     // Aggregate per-token and total USDT by summing each transaction's price*amount
@@ -425,7 +476,7 @@ const getPortfolioStats = async (ownerAddress) => {
         totalUsdt = totalUsdt.add(data.usdt || 0);
     }
 
-    return {
+    const result = {
         totalAssets,
         totalRoyalties: formatUsdtCurrency(totalUsdt),
         overallDisputeStatus: activeDisputeCount > 0 ? String(activeDisputeCount) : '0',
@@ -438,6 +489,8 @@ const getPortfolioStats = async (ownerAddress) => {
             usdtValue: Number((d.usdt || new Decimal(0)).toFixed(2))
         }))
     };
+    cache.portfolioStatsByOwner.set(ownerAddress, withTtl(result));
+    return result;
 };
 
 
@@ -550,6 +603,10 @@ const getPortfolioTimeSeries = async (ownerAddress, bucket = 'daily', days = 90)
     const lookbackDays = Number.isFinite(days) ? Math.max(1, Math.min(365, parseInt(days, 10))) : 90;
     const sinceEpochMs = Date.now() - lookbackDays * 24 * 60 * 60 * 1000;
 
+    const cacheKey = `${ownerAddress}:${finalBucket}:${lookbackDays}`;
+    const cached = cache.timeseriesByOwnerKey.get(cacheKey);
+    if (isFresh(cached)) return cached.value;
+
     const assetsResp = await getAssetsByOwner(ownerAddress, 200, 0);
     const assets = assetsResp.data || [];
     if (assets.length === 0) return { bucket: finalBucket, points: [] };
@@ -585,7 +642,9 @@ const getPortfolioTimeSeries = async (ownerAddress, bucket = 'daily', days = 90)
     const points = Array.from(bucketMap.entries())
         .map(([key, dec]) => ({ key, date: key, totalUsdt: Number(dec.toFixed(2)) }))
         .sort((a, b) => a.key.localeCompare(b.key));
-    return { bucket: finalBucket, points };
+    const result = { bucket: finalBucket, points };
+    cache.timeseriesByOwnerKey.set(cacheKey, withTtl(result));
+    return result;
 };
 
 /**
@@ -595,6 +654,8 @@ const getPortfolioTimeSeries = async (ownerAddress, bucket = 'daily', days = 90)
 const getAssetLeaderboard = async (ownerAddress, limit = 10) => {
     if (!storyApiKey) throw new Error("STORY_PROTOCOL_API_KEY is not set");
     if (!ownerAddress) return [];
+    const cached = cache.assetLeaderboardByOwner.get(ownerAddress);
+    if (isFresh(cached)) return cached.value.slice(0, Math.max(1, parseInt(limit, 10) || 10));
     const assetsResp = await getAssetsByOwner(ownerAddress, 200, 0);
     const assets = assetsResp.data || [];
     const rows = [];
@@ -607,6 +668,7 @@ const getAssetLeaderboard = async (ownerAddress, limit = 10) => {
         rows.push({ ipId: asset.ipId, title: asset.title || 'Untitled', usdtValue: Number(usdt.toFixed(2)) });
     }
     rows.sort((a, b) => b.usdtValue - a.usdtValue);
+    cache.assetLeaderboardByOwner.set(ownerAddress, withTtl(rows));
     return rows.slice(0, Math.max(1, parseInt(limit, 10) || 10));
 };
 
@@ -617,6 +679,8 @@ const getAssetLeaderboard = async (ownerAddress, limit = 10) => {
 const getPortfolioLicensees = async (ownerAddress, limit = 10) => {
     if (!storyApiKey) throw new Error("STORY_PROTOCOL_API_KEY is not set");
     if (!ownerAddress) return [];
+    const cached = cache.licenseeLeaderboardByOwner.get(ownerAddress);
+    if (isFresh(cached)) return cached.value.slice(0, Math.max(1, parseInt(limit, 10) || 10));
     const assetsResp = await getAssetsByOwner(ownerAddress, 200, 0);
     const assets = assetsResp.data || [];
     const licenseeTotals = new Map(); // address => { count, usdt: Decimal }
@@ -634,6 +698,7 @@ const getPortfolioLicensees = async (ownerAddress, limit = 10) => {
     }
     const rows = Array.from(licenseeTotals.values()).map(x => ({ address: x.address, count: x.count, usdtValue: Number(x.usdt.toFixed(2)) }));
     rows.sort((a, b) => b.usdtValue - a.usdtValue);
+    cache.licenseeLeaderboardByOwner.set(ownerAddress, withTtl(rows));
     return rows.slice(0, Math.max(1, parseInt(limit, 10) || 10));
 };
 

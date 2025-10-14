@@ -1,5 +1,26 @@
 import React, { useState } from 'react';
 
+// Helper untuk mengkonversi IPFS URI ke HTTP URL dan menangani kasus NULL/UNDEFINED
+const getImageUrl = (asset) => {
+    // 1. Prioritas tinggi dari metadata yang kaya (berdasarkan struktur yang Anda konfirmasi)
+    let url = asset.nftMetadata?.image?.cachedUrl ||
+              asset.nftMetadata?.raw?.metadata?.image || // Path dari raw metadata
+              asset.nftMetadata?.image?.originalUrl || // Path lain dari image object
+              asset.nftMetadata?.uri; // Fallback ke token URI
+
+    // 2. FIX KRITIS: Pastikan URL adalah string sebelum memanggil .startsWith
+    if (typeof url === 'string') { 
+        // 3. Handle IPFS URI conversion
+        if (url.startsWith('ipfs://')) {
+            return url.replace('ipfs://', 'https://ipfs.io/ipfs/');
+        }
+        return url.trim(); 
+    }
+    // 4. Fallback to local logo if no valid URL is found
+    return "/favicon.png"; 
+};
+
+
 // --- Sub-Komponen: WalletFilterForm (Simplified) ---
 const WalletFilterForm = ({ onFetch, initialOwnerAddress, isSubmitting }) => {
     // Hanya satu state untuk alamat input
@@ -43,7 +64,7 @@ const WalletFilterForm = ({ onFetch, initialOwnerAddress, isSubmitting }) => {
     );
 };
 
-// --- Komponen Utama: AssetTable (Sisanya tetap sama) ---
+// --- Komponen Utama: AssetTable ---
 function AssetTable({ assets, isLoading, error, onAssetClick }) {
     if (isLoading) {
         return (
@@ -76,9 +97,11 @@ function AssetTable({ assets, isLoading, error, onAssetClick }) {
             <table className="w-full text-left">
                 <thead className="bg-gray-900/50">
                     <tr>
+                        <th className="p-4">Preview</th>
                         <th className="p-4">Asset Title</th>
                         <th className="p-4">Media Type</th>
                         <th className="p-4">Date Created</th>
+                        <th className="p-4">Dispute Status</th> {/* NEW COLUMN */}
                     </tr>
                 </thead>
                 <tbody>
@@ -88,9 +111,32 @@ function AssetTable({ assets, isLoading, error, onAssetClick }) {
                             className="border-t border-gray-700 hover:bg-gray-700/50 cursor-pointer transition-colors"
                             onClick={() => onAssetClick(asset.ipId)}
                         >
+                            {/* Image Column */}
+                            <td className="p-2 w-16">
+                                <div className="w-12 h-12 bg-gray-700 rounded-lg overflow-hidden flex items-center justify-center">
+                                    {/* Menggunakan getImageUrl helper */}
+                                    <img 
+                                        src={getImageUrl(asset)} 
+                                        alt="Asset Preview" 
+                                        className="w-full h-full object-cover" 
+                                        // Fallback jika gambar gagal dimuat
+                                        onError={(e) => { e.target.onerror = null; e.target.src="/favicon.png"; }} 
+                                    />
+                                </div>
+                            </td>
                             <td className="p-4 font-semibold">{asset.title}</td>
                             <td className="p-4 text-gray-300">{asset.mediaType}</td>
                             <td className="p-4 text-gray-300">{new Date(asset.createdAt).toLocaleDateString()}</td>
+                            {/* NEW: Dispute Status Cell */}
+                            <td className="p-4">
+                                <span className={`text-xs font-bold px-2 py-1 rounded-full 
+                                    ${asset.disputeStatus === 'Active' ? 'bg-red-500 text-white' : 
+                                    asset.disputeStatus === 'Pending' ? 'bg-yellow-500/50 text-yellow-300' : 
+                                    'bg-green-500/20 text-green-300'}`
+                                }>
+                                    {asset.disputeStatus || 'None'}
+                                </span>
+                            </td>
                         </tr>
                     ))}
                 </tbody>

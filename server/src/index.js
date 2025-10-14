@@ -4,12 +4,16 @@ const cors = require('cors');
 const apiRoutes = require('./routes');
 
 // --- VALIDASI ENVIRONMENT VARIABLE ---
-if (!process.env.STORY_PROTOCOL_API_KEY || process.env.STORY_PROTOCOL_API_KEY === "YOUR_ASSETS_API_KEY_HERE") {
+// STORY_PROTOCOL_API_KEY digunakan untuk Assets API
+if (!process.env.STORY_PROTOCOL_API_KEY) {
     console.error("\nFATAL ERROR: STORY_PROTOCOL_API_KEY is not set in the .env file.");
+    console.error("Please create a .env file and add your Story Protocol Assets API key.");
     process.exit(1); 
 }
+// STORYSCAN_API_KEY digunakan untuk Transactions API
 if (!process.env.STORYSCAN_API_KEY) {
-    console.error("\nFATAL ERROR: STORYSCAN_API_KEY is not set in the .env file. This is required for Royalty Analytics.");
+    console.error("\nFATAL ERROR: STORYSCAN_API_KEY is not set in the .env file.");
+    console.error("Please create a .env file and add your Story Protocol Transactions API key.");
     process.exit(1); 
 }
 // ------------------------------------

@@ -2,13 +2,10 @@ const storyProtocolService = require('../services/storyProtocol.service');
 
 const getAssetsByOwnerController = async (req, res) => {
   try {
-    // FIX: Ambil ownerAddress dari query parameter, bukan path parameter
     const ownerAddress = req.query.ownerAddress; 
     const limit = parseInt(req.query.limit, 10) || 20; 
     const offset = parseInt(req.query.offset, 10) || 0;
     const tokenContract = req.query.tokenContract || undefined;
-
-    // TIDAK LAGI VALIDASI KETAT DI SINI. Logic failover di Client yang menangani validasi.
 
     const { data: assets, pagination } = await storyProtocolService.getAssetsByOwner(
         ownerAddress, 
@@ -28,6 +25,24 @@ const getAssetsByOwnerController = async (req, res) => {
   }
 };
 
+const getDashboardStatsController = async (req, res) => {
+    try {
+        const ownerAddress = req.query.ownerAddress; 
+        
+        if (!ownerAddress) { 
+             return res.status(400).json({ message: "OwnerAddress query parameter required for stats." });
+        }
+
+        const stats = await storyProtocolService.getPortfolioStats(ownerAddress);
+        
+        res.status(200).json(stats); // Mengembalikan objek stats lengkap
+    } catch (error) {
+        console.error(`[CONTROLLER_ERROR] ${error.message}`);
+        res.status(500).json({ message: `Terjadi error di server: ${error.message}` });
+    }
+};
+
+// --- Controllers Lainnya ---
 const getAssetDetailsController = async (req, res) => {
     try {
         let ipId = req.params.ipId;
@@ -82,4 +97,5 @@ module.exports = {
   getRoyaltyTransactionsController,
   getTopLicenseesController,
   getTransactionDetailController,
+  getDashboardStatsController, // NEW Export
 };

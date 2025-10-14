@@ -27,7 +27,7 @@ const STORY_TRANSACTIONS_API_BASE_URL = 'https://api.storyapis.com/api/v4/transa
 const STORY_TRANSACTION_DETAIL_BASE_URL = 'https://api.storyapis.com/api/v4/transactions'; 
 
 const storyApiKey = process.env.STORY_PROTOCOL_API_KEY;
-const storyScanApiKey = 'MhBsxkU1z9fG6TofE59KqiiWV-YlYE8Q4awlLQehF3U'; 
+const storyScanApiKey = process.env.STORYSCAN_API_KEY; 
 
 // Utility untuk memanggil API Story Protocol (Assets atau Transactions)
 const fetchStoryApi = async (url, apiKey, body, method = 'POST') => { 
@@ -64,6 +64,11 @@ const fetchStoryApi = async (url, apiKey, body, method = 'POST') => {
 
 // Fungsi pembantu untuk mengambil dan mengagregasi event royalti menggunakan Transactions API
 const getAndAggregateRoyaltyEventsFromApi = async (ipId) => {
+    
+    // PENTING: Periksa apakah key transaksi ada sebelum melakukan panggilan
+    if (!storyScanApiKey) {
+        throw new Error("STORYSCAN_API_KEY is not set in environment variables.");
+    }
     
     console.log(`[SERVICE] Fetching RoyaltyPaid events from Transactions API for IP ID: ${ipId}`);
 
@@ -108,14 +113,15 @@ const getAndAggregateRoyaltyEventsFromApi = async (ipId) => {
 
         return { transactions, totalWei, licenseeMap };
     } catch (e) {
-        throw new Error(`Failed to query Transactions API: ${e.message}`);
+        // FIX: Return nilai nol di catch agar loop agregasi global tidak berhenti
+        console.error(`[ROYALTY AGGREGATION ERROR] Failed to query Transactions API for IP ID ${ipId}: ${e.message}`);
+        return { transactions: [], totalWei: 0n, licenseeMap: new Map() };
     }
 }
 
 
 /**
  * CORE FUNCTION: Get all IP Assets for a given filter set.
- * ownerAddress is now truly optional, allowing filtering only by tokenContract.
  */
 const getAssetsByOwner = async (ownerAddress, limit = 20, offset = 0, tokenContract) => {
     
@@ -165,10 +171,68 @@ const getAssetsByOwner = async (ownerAddress, limit = 20, offset = 0, tokenContr
     return response; 
 };
 
+/**
+ * NEW: Aggregates portfolio-wide stats (Royalties and Dispute Status) for the dashboard.
+ */
+const getPortfolioStats = async (ownerAddress) => {
+    
+    if (!storyApiKey) {
+        throw new Error("STORY_PROTOCOL_API_KEY is not set in environment variables.");
+    }
+    if (!ownerAddress) {
+        return { totalAssets: 0, totalRoyalties: '0.00 ETH', overallDisputeStatus: 'N/A' };
+    }
+    
+    // 1. Dapatkan semua aset (cap di 200 untuk menghindari timeout)
+    const MAX_ASSET_LIMIT = 200; 
+    let allAssets = [];
+    
+    let assetResponse = await getAssetsByOwner(ownerAddress, MAX_ASSET_LIMIT, 0);
+    allAssets = assetResponse.data;
+    const totalAssets = assetResponse.pagination?.total || 0;
+
+    if (allAssets.length === 0) {
+        return { totalAssets, totalRoyalties: '0.00 ETH', overallDisputeStatus: 'None' };
+    }
+
+    // 2. Agregasi Total Royalti dan Status Sengketa
+    let globalTotalWei = 0n;
+    let overallDisputeStatus = 'None'; 
+
+    for (const asset of allAssets) {
+        try {
+            // Re-use the royalty aggregation function for each asset
+            const { totalWei } = await getAndAggregateRoyaltyEventsFromApi(asset.ipId.toLowerCase());
+            globalTotalWei += totalWei;
+            
+            // Dispute Status Aggregation: Jika ADA sengketa Aktif/Pending, set status portofolio
+            if (asset.disputeStatus === 'Active') {
+                overallDisputeStatus = 'Active';
+                break; // Hentikan loop jika menemukan status tertinggi
+            } else if (asset.disputeStatus === 'Pending' && overallDisputeStatus === 'None') {
+                overallDisputeStatus = 'Pending';
+            }
+
+        } catch (e) {
+            console.error(`Error processing IP ID ${asset.ipId}: ${e.message}`);
+        }
+    }
+    
+    return { 
+        totalAssets, 
+        totalRoyalties: formatWeiToEther(globalTotalWei), 
+        overallDisputeStatus: overallDisputeStatus 
+    };
+};
+
 
 // --- Fungsi Lainnya ---
 
 const getAssetDetails = async (ipId) => {
+    if (!storyApiKey) {
+        throw new Error("STORY_PROTOCOL_API_KEY is not set in environment variables.");
+    }
+
     if (!ipId) return null;
     const lowerCaseIpId = ipId.toLowerCase(); 
     const cacheKey = `asset:detail:${ipId}`;
@@ -179,21 +243,32 @@ const getAssetDetails = async (ipId) => {
         const requestBody = {
             includeLicenses: true, moderated: false, orderBy: "blockNumber", orderDirection: "desc", pagination: { limit: 1 }, where: { ipIds: searchIpIds }
         };
+        // FIX: Tambahkan disputeStatus ke API call asset
         const response = await fetchStoryApi(STORY_ASSETS_API_BASE_URL, storyApiKey, requestBody);
         asset = response.data[0];
     }
+    
+    // Default Dispute Status jika tidak ada
+    let assetDisputeStatus = asset.disputeStatus || 'None'; 
+
     let analytics = {};
     if (asset) {
         try {
             const { totalWei } = await getAndAggregateRoyaltyEventsFromApi(ipId); 
             analytics.totalRoyaltiesPaid = { ETH: formatWeiToEther(totalWei) };
-            analytics.disputeStatus = 'None'; 
+            // FIX: Menggunakan status sengketa real/default
+            analytics.disputeStatus = assetDisputeStatus; 
         } catch (e) {
             console.error(`[API_ERROR] Gagal mendapatkan data royalti untuk ${ipId}: ${e.message}`);
             analytics.errorMessage = e.message; 
         }
     } else { return null; }
-    if (asset) { asset.analytics = analytics; set(cacheKey, asset); }
+    
+    if (asset) { 
+        asset.analytics = analytics; 
+        asset.disputeStatus = assetDisputeStatus; // Ensure base object has status for AssetTable
+        set(cacheKey, asset); 
+    }
     return asset;
 };
 
@@ -208,6 +283,7 @@ const getRoyaltyTransactions = async (ipId) => {
 
 const getTopLicensees = async (ipId) => {
     try {
+        // Logika Top Licensees yang sudah ada
         const { licenseeMap } = await getAndAggregateRoyaltyEventsFromApi(ipId);
         let licensees = Array.from(licenseeMap.values()).map(lic => ({
             ...lic,
@@ -216,11 +292,15 @@ const getTopLicensees = async (ipId) => {
         licensees.sort((a, b) => (a.totalWei < b.totalWei) ? 1 : -1);
         return licensees.slice(0, 3);
     } catch (e) {
-        throw new Error(`Failed to load top licensees: ${e.message}`); 
+        throw new Error(`Failed to load royalty transactions: ${e.message}`); 
     }
 };
 
 const fetchTransactionDetail = async (txHash) => {
+    if (!storyScanApiKey) {
+        throw new Error("STORYSCAN_API_KEY is not set in environment variables.");
+    }
+    
     const url = `${STORY_TRANSACTION_DETAIL_BASE_URL}/${txHash}`;
     try {
         const options = { method: 'GET', url: url, headers: { 'X-Api-Key': storyScanApiKey } };
@@ -239,4 +319,5 @@ module.exports = {
   getRoyaltyTransactions,
   getTopLicensees,
   fetchTransactionDetail, 
+  getPortfolioStats, // NEW Export
 };

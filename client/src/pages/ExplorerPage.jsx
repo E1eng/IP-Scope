@@ -8,6 +8,8 @@ import { useSearch } from '../SearchContext';
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 const PAGE_LIMIT = 20;
 
+const ETH_ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/; // Regex untuk validasi alamat
+
 function ExplorerPage() {
   // Menggunakan Context untuk menyimpan state
   const {
@@ -27,19 +29,54 @@ function ExplorerPage() {
   const [hasMore, setHasMore] = useState(offset < totalResults); 
   const [selectedAsset, setSelectedAsset] = useState(null);
   
-  const [stats, setStats] = useState({ totalRoyalties: '...', totalAssets: '...', totalLicensees: '...' });
+  // FIX: Menggunakan stat default yang lebih akurat
+  const [stats, setStats] = useState({ totalRoyalties: 'N/A', totalAssets: '0', overallDisputeStatus: 'N/A' });
 
 
-  // Efek untuk mengambil statistik dashboard (MOCK)
+  // Efek untuk mengambil statistik dashboard (REAL)
   useEffect(() => {
-    setStats({
-        totalRoyalties: '2.54 ETH',
-        totalAssets: 125, 
-        totalLicensees: 45 
-    });
-  }, []);
+    const fetchDashboardStats = async () => {
+        const addressForStats = currentAddress || currentTokenContract;
 
-  // Helper untuk melakukan satu panggilan API
+        // 1. Sinkronkan totalAssets dari Context
+        setStats(prev => ({ 
+            ...prev, 
+            totalAssets: totalResults.toLocaleString() 
+        }));
+
+        if (!addressForStats) {
+            setStats(prev => ({ ...prev, totalRoyalties: 'N/A', overallDisputeStatus: '0' }));
+            return;
+        }
+
+        try {
+            // 2. Panggil endpoint /stats untuk mendapatkan Royalties dan Dispute Status
+            const params = new URLSearchParams({ ownerAddress: addressForStats });
+            const response = await axios.get(`${API_BASE_URL}/stats?${params.toString()}`);
+            
+            // 3. UPDATE ADVANCED STATS (Royalties & Dispute Status)
+            setStats(prev => ({
+                ...prev, 
+                totalRoyalties: response.data.totalRoyalties,
+                overallDisputeStatus: response.data.overallDisputeStatus
+            }));
+
+        } catch (err) {
+            console.error("Failed to fetch dashboard stats:", err);
+            // Pada kegagalan, tampilkan 'Error'
+            setStats(prev => ({ 
+                ...prev, 
+                totalRoyalties: 'Error', 
+                overallDisputeStatus: 'Error' 
+            }));
+        }
+    };
+    // Fetch stats setiap kali alamat yang berhasil terdeteksi berubah ATAU totalResults berubah.
+    fetchDashboardStats();
+  }, [currentAddress, currentTokenContract, totalResults, updateSearchState, API_BASE_URL]);
+
+
+  // Helper untuk melakukan satu panggilan API (tetap sama)
   const fetchAttempt = useCallback(async (ownerAddr, tokenContractAddr, currentOffset) => {
     
     // Membangun Query Parameters
@@ -65,7 +102,7 @@ function ExplorerPage() {
     const singleInput = address?.trim();
     
     // Validasi Dasar
-    if (!singleInput || !/^0x[a-fA-F0-9]{40}$/.test(singleInput)) {
+    if (!singleInput || !ETH_ADDRESS_REGEX.test(singleInput)) {
         setError("Please enter a valid Ethereum wallet address or token contract.");
         return;
     }
@@ -179,6 +216,7 @@ function ExplorerPage() {
   };
   
   const handleLoadMore = () => {
+      // Tentukan alamat mana yang akan digunakan untuk Load More (Owner atau Contract)
       const addressToLoad = currentAddress || currentTokenContract;
       if (addressToLoad) {
           handleFetchAssets(addressToLoad, false);
@@ -217,8 +255,15 @@ function ExplorerPage() {
         {hasSearched && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
                 <StatCard title="Total Royalties Collected" value={stats.totalRoyalties} icon="royalty" />
-                <StatCard title="Total IP Assets Found" value={totalResults.toLocaleString()} icon="asset" />
-                <StatCard title="Total Unique Licensees" value={stats.totalLicensees} icon="license" isWarning={true} />
+                {/* FIX: Menggunakan stat card total asset dari Context yang disinkronkan */}
+                <StatCard title="Total IP Assets Found" value={stats.totalAssets.toLocaleString()} icon="asset" /> 
+                {/* FIX: Mengganti judul dari "Overall Dispute Status" menjadi "Total Dispute Status" */}
+                <StatCard 
+                    title="Total Dispute Status" 
+                    value={stats.overallDisputeStatus === 'None' ? '0' : stats.overallDisputeStatus} 
+                    icon="license" 
+                    isWarning={stats.overallDisputeStatus === 'Active'} 
+                />
             </div>
         )}
         

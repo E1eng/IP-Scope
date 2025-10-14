@@ -32,6 +32,7 @@ function ExplorerPage() {
   const [leaderboardLoading, setLeaderboardLoading] = useState(false);
   const [royaltyTotalsMap, setRoyaltyTotalsMap] = useState({});
   const [counters, setCounters] = useState(null);
+  const [progress, setProgress] = useState({ running: false, percent: 0, displayPartial: '$0.00 USDT' });
 
 
   // Efek untuk mengambil statistik dashboard (REAL)
@@ -54,12 +55,25 @@ function ExplorerPage() {
             setStatsLoading(true);
             // 2. Panggil endpoint /stats untuk mendapatkan Royalties dan Dispute Status
             const params = new URLSearchParams({ ownerAddress: addressForStats });
+          // Kick off streaming aggregation (fire-and-forget)
+          try { await axios.post(`${API_BASE_URL}/stats/progress/start?${params.toString()}`); } catch {}
+          // Start polling progress
+          let cancelled = false;
+          const poll = async () => {
+            try {
+              const prog = await axios.get(`${API_BASE_URL}/stats/progress?${params.toString()}`);
+              if (!cancelled) setProgress(prog.data || { running: false, percent: 0, displayPartial: '$0.00 USDT' });
+            } catch {}
+          };
+          // initial poll and interval
+          await poll();
+          const intId = setInterval(poll, 1500);
             const response = await axios.get(`${API_BASE_URL}/stats?${params.toString()}`);
             
             // 3. UPDATE ADVANCED STATS (Royalties & Dispute Status)
             setStats(prev => ({
                 ...prev, 
-                totalRoyalties: response.data.displayTotal || response.data.totalRoyalties,
+            totalRoyalties: response.data.displayTotal || response.data.totalRoyalties,
                 overallDisputeStatus: response.data.overallDisputeStatus
             }));
             // 4. Ambil leaderboard aset (USDT) untuk peta total per aset
@@ -85,6 +99,7 @@ function ExplorerPage() {
             } else {
               setCounters(null);
             }
+          clearInterval(intId);
         } catch (err) {
             console.error("Failed to fetch dashboard stats:", err);
             // Pada kegagalan, tampilkan 'Error'
@@ -287,7 +302,7 @@ function ExplorerPage() {
         {/* Header Dashboard Stats */}
         {hasSearched && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-                <StatCard title="Total Royalties Collected" value={stats.totalRoyalties} icon="royalty" isLoading={statsLoading} />
+                <StatCard title="Total Royalties Collected" value={progress.running ? (progress.displayPartial || stats.totalRoyalties) : stats.totalRoyalties} icon="royalty" isLoading={statsLoading} progressPercent={progress.running ? progress.percent : null} />
                 <StatCard title="Total IP Assets Found" value={stats.totalAssets.toLocaleString()} icon="asset" /> 
                 <StatCard 
                     title="Total Dispute Status" 
@@ -301,7 +316,14 @@ function ExplorerPage() {
         {/* Results Area (Asset Table) */}
         {hasSearched && (
             <div className="space-y-6">
-                <h2 className="text-2xl font-bold text-white border-b border-gray-700 pb-2">2. IP Asset Portfolio</h2>
+                <div className="flex items-center justify-between">
+                  <h2 className="text-2xl font-bold text-white border-b border-gray-700 pb-2">2. IP Asset Portfolio</h2>
+                  <button className="text-xs px-3 py-1 rounded bg-gray-700 hover:bg-gray-600 text-white border border-gray-600" onClick={() => {
+                    const copy = [...results];
+                    copy.sort((a,b) => (royaltyTotalsMap[b.ipId] || 0) - (royaltyTotalsMap[a.ipId] || 0));
+                    updateSearchState({ results: copy });
+                  }}>Sort by Claimed</button>
+                </div>
 
                 <AssetTable
                     assets={sortedResults}

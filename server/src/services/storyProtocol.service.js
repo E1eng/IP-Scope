@@ -120,7 +120,7 @@ const fetchStoryApi = async (url, apiKey, body = {}, method = 'POST') => {
     } catch (error) {
         // Graceful fallback for 400/404
         const status = error.response?.status;
-        if (status === 404 || status === 400) {
+        if (status === 404 || status === 400 || status === 422) {
             if (url.includes(STORY_ASSETS_API_BASE_URL)) return { data: [], pagination: { total: 0 } };
             if (url.includes(STORY_TRANSACTIONS_API_BASE_URL)) return { events: [] };
         }
@@ -130,6 +130,62 @@ const fetchStoryApi = async (url, apiKey, body = {}, method = 'POST') => {
         // bubble up a user-friendly error
         throw new Error(error.response ? `API Error ${status}` : 'Network/API request failed');
     }
+};
+
+// --- Rate limit helpers ---
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+/**
+ * Process items with at most `rps` requests per second
+ */
+const mapWithRpsLimit = async (items, rps, mapper) => {
+    const batchSize = Math.max(1, parseInt(rps, 10) || 10);
+    const results = [];
+    for (let i = 0; i < items.length; i += batchSize) {
+        const batch = items.slice(i, i + batchSize);
+        // eslint-disable-next-line no-await-in-loop
+        const batchResults = await Promise.all(batch.map(mapper));
+        results.push(...batchResults);
+        if (i + batchSize < items.length) {
+            // eslint-disable-next-line no-await-in-loop
+            await sleep(1000);
+        }
+    }
+    return results;
+};
+
+/**
+ * Fetch all RoyaltyPaid events for an ipId with pagination and lowercase fallback
+ */
+const fetchRoyaltyEventsPaginated = async (ipId, pageSize = 200, maxPages = 50) => {
+    const candidates = [ipId];
+    const lc = ipId?.toLowerCase?.();
+    if (lc && lc !== ipId) candidates.push(lc);
+
+    for (const candidateId of candidates) {
+        const allEvents = [];
+        let offset = 0;
+        for (let page = 0; page < maxPages; page++) {
+            const body = {
+                where: { eventTypes: ["RoyaltyPaid"], ipIds: [candidateId] },
+                pagination: { limit: pageSize, offset }
+            };
+            try {
+                // eslint-disable-next-line no-await-in-loop
+                const resp = await fetchStoryApi(STORY_TRANSACTIONS_API_BASE_URL, storyApiKey, body, 'POST');
+                const events = resp.events || resp.data || [];
+                if (!events || events.length === 0) break;
+                allEvents.push(...events);
+                if (events.length < pageSize) break; // last page
+                offset += events.length;
+            } catch (e) {
+                console.error(`[PAGINATION] Failed fetching events for ${candidateId}: ${e.message}`);
+                break;
+            }
+        }
+        if (allEvents.length > 0) return allEvents;
+    }
+    return [];
 };
 
 /**
@@ -197,42 +253,21 @@ const getAndAggregateRoyaltyEventsFromApi = async (ipId) => {
     if (!ipId) {
         throw new Error("ipId is required");
     }
-
-    // build request body using ipId AS-IS (checksum) per your working example
-    const buildRequest = (id) => ({
-        where: { eventTypes: ["RoyaltyPaid"], ipIds: [id] },
-        pagination: { limit: 200 },
-        orderBy: "blockNumber",
-        orderDirection: "desc"
-    });
-
-    console.log(`[AGGR DEBUG] Querying transactions for IP ID ${ipId} (using AS-IS ID)...`);
-
-    let txResp = await fetchStoryApi(STORY_TRANSACTIONS_API_BASE_URL, storyApiKey, buildRequest(ipId), 'POST');
-    let events = txResp.events || txResp.data || [];
-
-    // fallback: try lowercase ipId if no events (some backends are inconsistent)
-    if ((!events || events.length === 0) && ipId.toLowerCase() !== ipId) {
-        console.log(`[AGGR DEBUG] No events for AS-IS IP ID; trying lowercase fallback ${ipId.toLowerCase()}`);
-        txResp = await fetchStoryApi(STORY_TRANSACTIONS_API_BASE_URL, storyApiKey, buildRequest(ipId.toLowerCase()), 'POST');
-        events = txResp.events || txResp.data || [];
-    }
-
+    
+    // Fetch ALL RoyaltyPaid events with pagination and lowercase fallback
+    const events = await fetchRoyaltyEventsPaginated(ipId, 200, 50);
     if (!events || events.length === 0) {
         console.log(`[AGGR RESULT] IP ID ${ipId}: No RoyaltyPaid events found.`);
         return { totalRoyaltiesByToken: new Map(), licenseeMap: new Map() };
     }
 
-    // fetch details from StoryScan in parallel (but guard concurrency if necessary)
-    const detailPromises = events.map(ev => {
-        // some event shapes use txHash or transactionHash
-        const txHash = ev.transactionHash || ev.txHash || ev.hash || ev.transaction?.hash;
-        return fetchTransactionDetailFromStoryScan(txHash)
+    // Fetch StoryScan details with 10 rps cap
+    const txHashes = events.map(ev => ev.transactionHash || ev.txHash || ev.hash || ev.transaction?.hash).filter(Boolean);
+    const detailed = await mapWithRpsLimit(txHashes, 10, async (txHash) =>
+        fetchTransactionDetailFromStoryScan(txHash)
             .then(detail => ({ txHash, detail }))
-            .catch(err => ({ txHash, detail: { amount: 0n, decimals: 18, symbol: 'ETH', tokenAddress: null, exchangeRateUsd: null, from: null } }));
-    });
-
-    const detailed = await Promise.all(detailPromises);
+            .catch(() => ({ txHash, detail: { amount: 0n, decimals: 18, symbol: 'ETH', tokenAddress: null, exchangeRateUsd: null, from: null } }))
+    );
 
     const totalRoyaltiesByToken = new Map();
     const licenseeMap = new Map();
@@ -323,20 +358,12 @@ const getAssetsByOwner = async (ownerAddress, limit = 20, offset = 0, tokenContr
  */
 const fetchRoyaltyTxDetailsForAsset = async (ipId) => {
     if (!storyApiKey) throw new Error("STORY_PROTOCOL_API_KEY is not set");
-    const txResp = await fetchStoryApi(STORY_TRANSACTIONS_API_BASE_URL, storyApiKey, {
-        where: { ipIds: [ipId], eventTypes: ["RoyaltyPaid"] },
-        pagination: { limit: 300 },
-        orderBy: 'blockNumber',
-        orderDirection: 'desc'
-    }, 'POST');
-    const events = txResp.events || txResp.data || [];
+    const events = await fetchRoyaltyEventsPaginated(ipId, 200, 50);
     if (!Array.isArray(events) || events.length === 0) return [];
 
-    const detailPromises = events.map(ev => {
-        const txHash = ev.transactionHash || ev.txHash || ev.hash || ev.transaction?.hash;
-        return fetchTransactionDetailFromStoryScan(txHash).then(detail => ({ txHash, detail }));
-    });
-    const detailed = await Promise.all(detailPromises);
+    // Use rate-limited mapper to respect StoryScan 10 rps
+    const txHashes = events.map(ev => ev.transactionHash || ev.txHash || ev.hash || ev.transaction?.hash).filter(Boolean);
+    const detailed = await mapWithRpsLimit(txHashes, 10, async (txHash) => fetchTransactionDetailFromStoryScan(txHash).then(detail => ({ txHash, detail })));
     return detailed.map(d => ({
         txHash: d.txHash,
         timestampSec: d.detail?.timestamp || null,

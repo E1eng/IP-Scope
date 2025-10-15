@@ -203,6 +203,66 @@ const normalizeDisputesResponse = (resp) => {
     return [];
 };
 
+// --- Dispute via Transactions fallback (recommended by docs example) ---
+const fetchDisputeEventsForIpIdPaginated = async (ipId, pageSize = 200) => {
+    const candidates = [ipId];
+    const lc = ipId?.toLowerCase?.();
+    if (lc && lc !== ipId) candidates.push(lc);
+    for (const candidateId of candidates) {
+        const allEvents = [];
+        let offset = 0;
+        // Loop until API returns empty
+        for (;;) {
+            const body = {
+                where: { eventTypes: ["DisputeRaised", "DisputeResolved"], ipIds: [candidateId] },
+                pagination: { limit: pageSize, offset }
+            };
+            try {
+                // eslint-disable-next-line no-await-in-loop
+                const resp = await fetchStoryApi(STORY_TRANSACTIONS_API_BASE_URL, storyApiKey, body, 'POST');
+                const events = resp.events || resp.data || [];
+                if (!events || events.length === 0) break;
+                allEvents.push(...events);
+                if (events.length < pageSize) break;
+                offset += events.length;
+            } catch {
+                break;
+            }
+        }
+        if (allEvents.length > 0) return allEvents;
+    }
+    return [];
+};
+
+const parseIsoOrNull = (s) => {
+    try { const t = Date.parse(s); return Number.isFinite(t) ? t : null; } catch { return null; }
+};
+
+const deriveDisputeStatusFromEvents = (events) => {
+    if (!Array.isArray(events) || events.length === 0) return null;
+    const sorted = [...events].sort((a, b) => {
+        const ta = parseIsoOrNull(a.createdAt) ?? 0;
+        const tb = parseIsoOrNull(b.createdAt) ?? 0;
+        if (ta !== tb) return ta - tb;
+        const ba = (a.blockNumber || 0) - (b.blockNumber || 0);
+        if (ba !== 0) return ba;
+        return (a.logIndex || 0) - (b.logIndex || 0);
+    });
+    const last = sorted[sorted.length - 1];
+    if (!last || !last.eventType) return null;
+    if (String(last.eventType).toLowerCase().includes('resolveres') || String(last.eventType).toLowerCase() === 'disputeresolved') return 'Resolved';
+    if (String(last.eventType).toLowerCase().includes('raise') || String(last.eventType).toLowerCase() === 'disputeraised') return 'Active';
+    return null;
+};
+
+const getDisputeStatusFromTransactions = async (ipId) => {
+    try {
+        if (!ipId) return null;
+        const evs = await fetchDisputeEventsForIpIdPaginated(ipId, 200);
+        return deriveDisputeStatusFromEvents(evs);
+    } catch { return null; }
+};
+
 const getDisputesByWhere = async (where, limit = 10) => {
     const body = { where, pagination: { limit } };
     const resp = await fetchStoryApi(STORY_DISPUTES_API_BASE_URL, storyApiKey, body, 'POST');
@@ -688,6 +748,12 @@ const getAssetsByOwner = async (ownerAddress, limit = 20, offset = 0, tokenContr
         }
         for (const a of data) {
             if (ipToStatus.has(a.ipId)) a.disputeStatus = ipToStatus.get(a.ipId);
+            if (!a.disputeStatus || a.disputeStatus === 'None') {
+                try {
+                    const fb = await getDisputeStatusFromTransactions(a.ipId);
+                    if (fb) a.disputeStatus = fb;
+                } catch {}
+            }
             // If mediaType missing or UNKNOWN, try detect via nftMetadata.uri (ipfs)
             const currentMedia = (a.mediaType || '').toUpperCase();
             const uri = a?.nftMetadata?.image?.cachedUrl || a?.nftMetadata?.raw?.metadata?.image || a?.nftMetadata?.image?.originalUrl || a?.nftMetadata?.uri;
@@ -859,7 +925,7 @@ const getAssetDetails = async (ipId) => {
     const asset = (resp.data && resp.data.length > 0) ? resp.data[0] : null;
     if (!asset) return null;
 
-    // Fetch dispute status via disputes API (more reliable)
+    // Fetch dispute status via disputes API; fallback to transactions-based derivation
     let assetDisputeStatus = asset.disputeStatus || 'None';
     try {
         const dispReq = {
@@ -875,7 +941,13 @@ const getAssetDetails = async (ipId) => {
             assetDisputeStatus = status;
         }
     } catch (e) {
-        // fallback: keep existing status
+        // ignore; will try transactions fallback below
+    }
+    if (!assetDisputeStatus || assetDisputeStatus === 'None') {
+        try {
+            const fallback = await getDisputeStatusFromTransactions(ipId);
+            if (fallback) assetDisputeStatus = fallback;
+        } catch {}
     }
     const analytics = {};
 

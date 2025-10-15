@@ -144,6 +144,11 @@ const getDisputesByWhere = async (where, limit = 10) => {
 
 const getDisputeStatusForIpId = async (ipId) => {
     if (!ipId) return null;
+    // Prefer targetIpId as per docs examples
+    try {
+        const arr = await getDisputesByWhere({ targetIpId: ipId }, 1);
+        if (arr.length > 0) return arr[0]?.status || arr[0]?.state || 'Active';
+    } catch {}
     // Try ipIds array
     try {
         const arr = await getDisputesByWhere({ ipIds: [ipId] }, 1);

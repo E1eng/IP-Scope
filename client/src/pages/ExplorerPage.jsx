@@ -262,9 +262,9 @@ function ExplorerPage() {
   const handleFetchAssets = useCallback(async (address, newSearch = true) => { 
     const singleInput = address?.trim();
     
-    // Validasi Dasar
-    if (!singleInput || !ETH_ADDRESS_REGEX.test(singleInput)) {
-        setError("Please enter a valid Ethereum wallet address or token contract.");
+    // Validasi Dasar: izinkan IP ID / address / token contract
+    if (!singleInput) {
+        setError("Please enter a valid input.");
         return;
     }
     

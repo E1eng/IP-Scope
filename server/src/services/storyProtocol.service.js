@@ -736,10 +736,56 @@ const getAssetsByOwner = async (ownerAddress, limit = 20, offset = 0, tokenContr
         where: whereClause
     };
 
-    const resp = await fetchStoryApi(STORY_ASSETS_API_BASE_URL, storyApiKey, requestBody, 'POST');
+    let resp = await fetchStoryApi(STORY_ASSETS_API_BASE_URL, storyApiKey, requestBody, 'POST');
+
+    // Fallbacks if empty: try lowercase variants and ipId direct lookup
+    let data = resp.data || [];
+    if (!Array.isArray(data) || data.length === 0) {
+        // 1) lowercase ownerAddress
+        if (ownerAddress && ownerAddress.toLowerCase() !== ownerAddress) {
+            try {
+                const req2 = { ...requestBody, where: { ...whereClause, ownerAddress: ownerAddress.toLowerCase() } };
+                const resp2 = await fetchStoryApi(STORY_ASSETS_API_BASE_URL, storyApiKey, req2, 'POST');
+                data = resp2.data || [];
+                resp = resp2;
+            } catch {}
+        }
+    }
+    if (!Array.isArray(data) || data.length === 0) {
+        // 2) lowercase tokenContract
+        if (tokenContract && tokenContract.toLowerCase() !== tokenContract) {
+            try {
+                const req3 = { ...requestBody, where: { ...whereClause, tokenContract: tokenContract.toLowerCase() } };
+                const resp3 = await fetchStoryApi(STORY_ASSETS_API_BASE_URL, storyApiKey, req3, 'POST');
+                data = resp3.data || [];
+                resp = resp3;
+            } catch {}
+        }
+    }
+    if (!Array.isArray(data) || data.length === 0) {
+        // 3) Direct ipId lookup if input looks like address (user may have pasted IP ID)
+        const candidate = ownerAddress || tokenContract;
+        if (candidate && /^0x[a-fA-F0-9]{40}$/.test(candidate)) {
+            const tryIds = [candidate];
+            const lc = candidate.toLowerCase();
+            if (lc !== candidate) tryIds.push(lc);
+            for (const id of tryIds) {
+                try {
+                    const req4 = { includeLicenses: true, moderated: false, pagination: { limit: 1 }, where: { ipIds: [id] } };
+                    const resp4 = await fetchStoryApi(STORY_ASSETS_API_BASE_URL, storyApiKey, req4, 'POST');
+                    const d4 = resp4.data || [];
+                    if (Array.isArray(d4) && d4.length > 0) {
+                        data = d4;
+                        resp = { ...resp4, pagination: { total: 1, limit: 1, offset: 0 } };
+                        break;
+                    }
+                } catch {}
+            }
+        }
+    }
 
     // Enrich disputes status and mediaType via IPFS
-    const data = resp.data || [];
+    data = data || [];
     try {
         const dispReq = {
             where: { ipIds: data.map(a => a.ipId).filter(Boolean) },

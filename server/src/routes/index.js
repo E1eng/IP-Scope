@@ -36,6 +36,18 @@ router.post('/stats/progress/start', async (req, res) => {
   }
 });
 
+// Optional GET alias for environments that cannot POST easily
+router.get('/stats/progress/start', async (req, res) => {
+  try {
+    const owner = req.query.ownerAddress;
+    if (!owner) return res.status(400).json({ message: 'ownerAddress query param required' });
+    const result = await svc.startPortfolioAggregation(owner);
+    return res.json(result);
+  } catch (e) {
+    return res.status(500).json({ message: 'failed to start aggregation', error: e.message });
+  }
+});
+
 router.get('/stats/progress', async (req, res) => {
   try {
     const owner = req.query.ownerAddress;

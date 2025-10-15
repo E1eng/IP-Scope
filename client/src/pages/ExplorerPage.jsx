@@ -33,6 +33,10 @@ function ExplorerPage() {
   const [royaltyTotalsMap, setRoyaltyTotalsMap] = useState({});
   const [counters, setCounters] = useState(null);
   const [progress, setProgress] = useState({ running: false, percent: 0, displayPartial: '$0.00 USDT' });
+  const [supportsProgress, setSupportsProgress] = useState(true);
+  const hasFinalizedRef = useRef(false);
+  const [disputeAlert, setDisputeAlert] = useState({ visible: false, activeCount: 0 });
+  const lastActiveCountRef = useRef(0);
 
 
   // Efek untuk mengambil statistik dashboard (REAL)
@@ -55,18 +59,76 @@ function ExplorerPage() {
 
         try {
             setStatsLoading(true);
+            setSupportsProgress(true);
+            hasFinalizedRef.current = false;
             const params = new URLSearchParams({ ownerAddress: addressForStats });
-            // Start async aggregation
-            try { await axios.post(`${API_BASE_URL}/stats/progress/start?${params.toString()}`); } catch {}
-            // Poll progress
-            const poll = async () => {
+
+            // Helper: finalize fetch when progress endpoints unsupported
+            const finalizeNow = async () => {
+              if (hasFinalizedRef.current) return;
+              hasFinalizedRef.current = true;
               try {
-                const prog = await axios.get(`${API_BASE_URL}/stats/progress?${params.toString()}`);
-                setProgress(prog.data || { running: false, percent: 0, displayPartial: '$0.00 USDT' });
-              } catch {}
+                const response = await axios.get(`${API_BASE_URL}/stats?${params.toString()}`);
+                setStats(prev => ({
+                  ...prev,
+                  totalRoyalties: response.data.displayTotal || response.data.totalRoyalties,
+                  overallDisputeStatus: response.data.overallDisputeStatus,
+                  breakdownByToken: response.data.breakdownByToken || []
+                }));
+                try {
+                  setLeaderboardLoading(true);
+                  const lbRes = await axios.get(`${API_BASE_URL}/stats/leaderboard/assets?${params.toString()}&limit=500`);
+                  const map = {};
+                  const rows = lbRes.data?.data || lbRes.data || [];
+                  rows.forEach(row => { if (row?.ipId) map[row.ipId] = row.usdtValue; });
+                  setRoyaltyTotalsMap(map);
+                } finally {
+                  setLeaderboardLoading(false);
+                }
+              } finally {
+                setStatsLoading(false);
+                if (progressIntervalRef.current) {
+                  clearInterval(progressIntervalRef.current);
+                  progressIntervalRef.current = null;
+                }
+                // Mark progress as completed to hide progress bar
+                setProgress({ running: false, percent: 100, displayPartial: '$0.00 USDT' });
+              }
             };
-            await poll();
-            progressIntervalRef.current = setInterval(poll, 1500);
+
+            // Try to start async aggregation (if supported by backend)
+            let canUseProgress = true;
+            try {
+              await axios.post(`${API_BASE_URL}/stats/progress/start?${params.toString()}`);
+            } catch (e) {
+              if (e?.response?.status === 404) {
+                canUseProgress = false;
+                setSupportsProgress(false);
+                await finalizeNow();
+              }
+            }
+
+            if (canUseProgress) {
+              // Poll progress
+              const poll = async () => {
+                try {
+                  const prog = await axios.get(`${API_BASE_URL}/stats/progress?${params.toString()}`);
+                  setProgress(prog.data || { running: false, percent: 0, displayPartial: '$0.00 USDT' });
+                } catch (e) {
+                  if (e?.response?.status === 404) {
+                    setSupportsProgress(false);
+                    if (progressIntervalRef.current) {
+                      clearInterval(progressIntervalRef.current);
+                      progressIntervalRef.current = null;
+                    }
+                    await finalizeNow();
+                  }
+                }
+              };
+              await poll();
+              progressIntervalRef.current = setInterval(poll, 1500);
+            }
+
             // Fetch counters early (non-blocking)
             if (currentAddress) {
               try {
@@ -98,7 +160,7 @@ function ExplorerPage() {
     const addressForStats = currentAddress || currentTokenContract;
     if (!addressForStats) return;
     const params = new URLSearchParams({ ownerAddress: addressForStats });
-    const shouldFinalize = (!progress.running && progress.percent >= 100) || progress.percent === 100;
+    const shouldFinalize = supportsProgress && ((!progress.running && progress.percent >= 100) || progress.percent === 100);
     if (!shouldFinalize) return;
     const finalize = async () => {
       try {
@@ -130,7 +192,31 @@ function ExplorerPage() {
       }
     };
     finalize();
-  }, [progress.percent, progress.running, currentAddress, currentTokenContract, API_BASE_URL]);
+  }, [supportsProgress, progress.percent, progress.running, currentAddress, currentTokenContract, API_BASE_URL]);
+
+  // Instant alert: poll assets-status and notify when Active Dispute increases
+  useEffect(() => {
+    const addressForStats = currentAddress || currentTokenContract;
+    if (!addressForStats) return;
+    let timerId;
+    const params = new URLSearchParams({ ownerAddress: addressForStats });
+    const pollStatus = async () => {
+      try {
+        const resp = await axios.get(`${API_BASE_URL}/stats/assets-status?${params.toString()}`);
+        const active = resp.data?.counts?.active || 0;
+        if (active > lastActiveCountRef.current) {
+          setDisputeAlert({ visible: true, activeCount: active });
+        }
+        lastActiveCountRef.current = active;
+      } catch (_) {
+        // ignore
+      }
+    };
+    // initial and interval
+    pollStatus();
+    timerId = setInterval(pollStatus, 30000);
+    return () => { if (timerId) clearInterval(timerId); };
+  }, [currentAddress, currentTokenContract, API_BASE_URL]);
 
 
   // Helper untuk melakukan satu panggilan API (tetap sama)
@@ -302,6 +388,18 @@ function ExplorerPage() {
   return (
     <div className="space-y-8">
         <h1 className="text-3xl font-extrabold text-white mb-6">RoyaltyFlow Dashboard</h1>
+
+        {disputeAlert.visible && (
+          <div className="p-3 rounded-lg bg-yellow-900/40 border border-yellow-600 text-yellow-200 text-sm flex justify-between items-center">
+            <span>
+              Warning: {disputeAlert.activeCount} asset(s) are in <span className="font-bold">Active Dispute</span>.
+            </span>
+            <button
+              onClick={() => setDisputeAlert({ visible: false, activeCount: disputeAlert.activeCount })}
+              className="text-yellow-300 hover:text-yellow-100 text-xs underline"
+            >Dismiss</button>
+          </div>
+        )}
 
         {/* Wallet Input Area */}
         <div className="bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-700">

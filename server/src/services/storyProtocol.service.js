@@ -777,46 +777,56 @@ const getAssetDetails = async (ipId) => {
 /**
  * getRoyaltyTransactions(ipId)
  * - returns array of transactions with formatted value & timestamp
+ * - robust: lowercase fallback + pagination + StoryScan rate-limit + caching
  */
 const getRoyaltyTransactions = async (ipId) => {
-    if (!storyApiKey) throw new Error("STORY_PROTOCOL_API_KEY is not set");
+    try {
+        if (!storyApiKey) {
+            // Gracefully degrade: without Story API key we cannot list events
+            return [];
+        }
 
-    // first aggregate (to ensure licensee map etc)
-    const { totalRoyaltiesByToken } = await getAndAggregateRoyaltyEventsFromApi(ipId);
+        // Use the same robust pagination used elsewhere (handles lowercase fallback internally)
+        const events = await fetchRoyaltyEventsPaginated(ipId, 200);
+        if (!Array.isArray(events) || events.length === 0) return [];
 
-    // fetch transaction list
-    const txResp = await fetchStoryApi(STORY_TRANSACTIONS_API_BASE_URL, storyApiKey, {
-        where: { ipIds: [ipId], eventTypes: ["RoyaltyPaid"] },
-        pagination: { limit: 200 },
-    }, 'POST');
-    const events = txResp.events || txResp.data || [];
+        // Respect StoryScan 10 RPS and use cache
+        const txHashes = events
+            .map(ev => ev.transactionHash || ev.txHash || ev.hash || ev.transaction?.hash)
+            .filter(Boolean);
 
-    const detailPromises = events.map(ev => {
-        const txHash = ev.transactionHash || ev.txHash || ev.hash || ev.transaction?.hash;
-        return fetchTransactionDetailFromStoryScan(txHash).then(detail => ({ txHash, detail }));
-    });
-
-    const detailed = await Promise.all(detailPromises);
-
-    // map to UI shape, filter >0
-    const mapped = detailed
-        .filter(d => d.detail && d.detail.amount && d.detail.amount > 0n)
-        .map(d => {
-            const amount = d.detail.amount;
-            const symbol = d.detail.symbol || 'ETH';
-            const decimals = d.detail.decimals || 18;
-            const from = d.detail.from || 'N/A';
-            const timestamp = d.detail.timestamp ? (new Date(d.detail.timestamp * 1000)).toISOString() : null;
-            return {
-                txHash: d.txHash,
-                from,
-                value: `${formatTokenAmountWithDecimals(amount, decimals)} ${symbol}`,
-                timestamp,
-                rawAmount: amount.toString()
-            };
+        const detailed = await mapWithRpsLimit(txHashes, 10, async (txHash) => {
+            const cached = getTxDetailCache(txHash);
+            if (cached) return { txHash, detail: cached };
+            const detail = await fetchTransactionDetailFromStoryScan(txHash);
+            setTxDetailCache(txHash, detail);
+            return { txHash, detail };
         });
 
-    return mapped;
+        // map to UI shape, filter >0
+        const mapped = detailed
+            .filter(d => d.detail && d.detail.amount && d.detail.amount > 0n)
+            .map(d => {
+                const amount = d.detail.amount;
+                const symbol = d.detail.symbol || 'ETH';
+                const decimals = d.detail.decimals || 18;
+                const from = d.detail.from || 'N/A';
+                const timestamp = d.detail.timestamp ? (new Date(d.detail.timestamp * 1000)).toISOString() : null;
+                return {
+                    txHash: d.txHash,
+                    from,
+                    value: `${formatTokenAmountWithDecimals(amount, decimals)} ${symbol}`,
+                    timestamp,
+                    rawAmount: amount.toString()
+                };
+            });
+
+        return mapped;
+    } catch (e) {
+        // Never throw to the controller; return empty list to avoid 500s in modal
+        console.error('[SERVICE] getRoyaltyTransactions failed', e.message);
+        return [];
+    }
 };
 
 

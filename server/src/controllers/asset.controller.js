@@ -53,10 +53,12 @@ const getAssetTransactions = async (req, res) => {
 
   try {
     const list = await service.getRoyaltyTransactions(ipId);
-    return res.json(list);
+    // Always return array; never 500 so modal doesn't break
+    return res.json(Array.isArray(list) ? list : []);
   } catch (e) {
     console.error('[CONTROLLER] getAssetTransactions fatal', e);
-    return res.status(500).json({ message: 'Failed to load royalty transactions', error: e.message });
+    // Graceful fallback: return empty array for the modal
+    return res.json([]);
   }
   } catch (e) {
     console.error('[CONTROLLER] getAssetTransactions error', e);

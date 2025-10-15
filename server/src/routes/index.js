@@ -5,6 +5,7 @@ const router = express.Router();
 const assetController = require('../controllers/asset.controller.js');
 const svc = require('../services/storyProtocol.service.js');
 const axios = require('axios');
+const { isAddress, getAddress } = require('viem');
 
 // Search / list assets used by ExplorerPage
 router.get('/assets', assetController.searchAssets);
@@ -64,9 +65,36 @@ router.get('/addresses/:address_hash/counters', async (req, res) => {
   try {
     const { address_hash } = req.params;
     const storyScanApiKey = process.env.STORYSCAN_API_KEY;
-    const url = `https://www.storyscan.io/api/v2/addresses/${address_hash}/counters`;
-    const resp = await axios.get(url, { headers: { 'X-Api-Key': storyScanApiKey }, timeout: 10000 });
-    return res.json(resp.data || {});
+    const normalizeLower = (addr) => {
+      if (!addr) return addr;
+      if (/^[xX][0-9a-fA-F]{40}$/.test(addr)) return `0x${addr.slice(1).toLowerCase()}`;
+      if (/^[0-9a-fA-F]{40}$/.test(addr)) return `0x${addr.toLowerCase()}`;
+      if (/^0x[0-9a-fA-F]{40}$/.test(addr)) return addr.toLowerCase();
+      return addr;
+    };
+    const lower = normalizeLower(address_hash);
+    const candidates = [];
+    if (lower) candidates.push(lower);
+    try {
+      if (isAddress(lower)) candidates.push(getAddress(lower));
+    } catch {}
+    // Try candidates in order
+    const headers = { 'X-Api-Key': storyScanApiKey };
+    for (const cand of candidates) {
+      try {
+        const url = `https://www.storyscan.io/api/v2/addresses/${cand}/counters`;
+        const resp = await axios.get(url, { headers, timeout: 8000 });
+        return res.json(resp.data || {});
+      } catch (e) {
+        if (e.response?.status && e.response.status !== 422) {
+          // non-422: skip to generic handler
+          throw e;
+        }
+        // if 422, try next candidate
+      }
+    }
+    // All attempts failed due to 422; return empty counters gracefully
+    return res.json({ transactions_count: '0', gas_usage_count: '0', token_transfers_count: '0', validations_count: '0' });
   } catch (e) {
     console.error('[ROUTE] counters error', e.message);
     const status = e.response?.status || 500;

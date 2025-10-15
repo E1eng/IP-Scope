@@ -42,6 +42,8 @@ function ExplorerPage() {
   // Efek untuk mengambil statistik dashboard (REAL)
   const progressIntervalRef = useRef(null);
   const lastRequestedAddressRef = useRef(null);
+  const assetsAbortRef = useRef(null);
+  const isFetchingAssetsRef = useRef(false);
 
   useEffect(() => {
     const fetchDashboardStats = async () => {
@@ -255,7 +257,7 @@ function ExplorerPage() {
     }
 
     // FIX: Tambahkan timeout eksplisit 10 detik
-    const response = await axios.get(`${API_BASE_URL}/assets?${params.toString()}`, { timeout: 15000, validateStatus: () => true });
+    const response = await axios.get(`${API_BASE_URL}/assets?${params.toString()}`, { timeout: 20000, validateStatus: () => true, signal: assetsAbortRef.current?.signal });
     if (response.status === 202) {
       // degraded: keep existing list, show gentle message (no hard error)
       return response.data; // may contain { degraded: true }
@@ -288,6 +290,16 @@ function ExplorerPage() {
     
     // --- Pembungkus Try-Finally Global untuk menjamin reset loading ---
     try {
+        // Cancel any in-flight assets requests when starting a new search
+        if (newSearch) {
+            try { assetsAbortRef.current?.abort(); } catch {}
+            assetsAbortRef.current = new AbortController();
+        }
+
+        // Prevent parallel fetches to reduce server pressure
+        if (isFetchingAssetsRef.current) return;
+        isFetchingAssetsRef.current = true;
+
         // Reset Context State untuk pencarian baru
         if (newSearch) {
             updateSearchState({
@@ -371,18 +383,12 @@ function ExplorerPage() {
         setError("Critical error during asset loading.");
         console.error("CRITICAL UNCAUGHT ERROR:", e);
     } finally {
+        isFetchingAssetsRef.current = false;
         // GUARANTEE RESET LOADING STATE (Ini adalah kunci perbaikan)
         newSearch ? setIsLoading(false) : setIsLoadingMore(false);
     }
   }, [offset, results, updateSearchState, fetchAttempt]); 
-  
-  // Logika pemulihan state (self-healing)
-  useEffect(() => {
-      if (hasSearched && (currentAddress || currentTokenContract) && results.length === 0 && totalResults > 0 && !isLoading) {
-          console.log("[EXPLORER] Attempting to recover lost asset list.");
-          handleFetchAssets(currentAddress || currentTokenContract, true); 
-      }
-  }, [hasSearched, currentAddress, currentTokenContract, results.length, totalResults, isLoading, handleFetchAssets]);
+
 
 
   const handleSubmit = (address) => { 

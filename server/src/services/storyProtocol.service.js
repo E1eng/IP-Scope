@@ -113,6 +113,7 @@ const storyApiKey = process.env.STORY_PROTOCOL_API_KEY;
 const storyScanApiKey = process.env.STORYSCAN_API_KEY;
 const DEBUG_AGGR_LOGS = process.env.DEBUG_AGGR_LOGS === '1';
 const STORYSCAN_RPS = parseInt(process.env.STORYSCAN_RPS || '10', 10);
+const STORYAPI_RPS = parseInt(process.env.STORYAPI_RPS || '300', 10);
 
 // --- Simple in-memory cache to speed up repeated heavy aggregations ---
 const CACHE_TTL_MS = parseInt(process.env.AGGREGATION_CACHE_TTL_MS || '300000', 10); // default 5 minutes
@@ -168,6 +169,46 @@ const limitedStoryScanGet = async (url, options = {}, retries = 3) => {
             const backoffMs = 700 * (4 - retries) + Math.floor(Math.random() * 200);
             await sleep(backoffMs);
             return limitedStoryScanGet(url, options, retries - 1);
+        }
+        throw e;
+    }
+};
+
+// --- Global Story API rate limiter (token bucket) ---
+let apiTokens = STORYAPI_RPS;
+let apiLastRefill = Date.now();
+const refillApiTokens = () => {
+    const now = Date.now();
+    const elapsed = now - apiLastRefill;
+    if (elapsed >= refillIntervalMs) {
+        const refillCount = Math.floor(elapsed / refillIntervalMs);
+        apiTokens = Math.min(STORYAPI_RPS, apiTokens + refillCount * STORYAPI_RPS);
+        apiLastRefill += refillCount * refillIntervalMs;
+    }
+};
+const acquireApiToken = async () => {
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+        refillApiTokens();
+        if (apiTokens > 0) {
+            apiTokens -= 1;
+            return;
+        }
+        // eslint-disable-next-line no-await-in-loop
+        await sleep(10);
+    }
+};
+const limitedStoryApiRequest = async (options, retries = 2) => {
+    await acquireApiToken();
+    try {
+        return await axios(options);
+    } catch (e) {
+        const status = e.response?.status;
+        // Handle 429 from Story API with small backoff
+        if (status === 429 && retries > 0) {
+            const backoffMs = 150 * (3 - retries) + Math.floor(Math.random() * 100);
+            await sleep(backoffMs);
+            return limitedStoryApiRequest(options, retries - 1);
         }
         throw e;
     }
@@ -438,7 +479,8 @@ const fetchStoryApi = async (url, apiKey, body = {}, method = 'POST') => {
         // eslint-disable-next-line no-constant-condition
         while (true) {
             try {
-                return await axios(opts);
+                // Respect global Story API rate limit
+                return await limitedStoryApiRequest(opts);
             } catch (err) {
                 const status = err.response?.status;
                 const retriable = !status || status >= 500 || err.code === 'ECONNABORTED';

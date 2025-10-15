@@ -119,6 +119,7 @@ const STORYAPI_RPS = parseInt(process.env.STORYAPI_RPS || '300', 10);
 const CACHE_TTL_MS = parseInt(process.env.AGGREGATION_CACHE_TTL_MS || '300000', 10); // default 5 minutes
 const TX_DETAIL_TTL_MS = parseInt(process.env.TX_DETAIL_TTL_MS || '86400000', 10); // default 24 hours
 const TOKEN_PRICE_TTL_MS = parseInt(process.env.TOKEN_PRICE_TTL_MS || '1800000', 10); // default 30 minutes
+const ASSETS_CACHE_TTL_MS = parseInt(process.env.ASSETS_CACHE_TTL_MS || '60000', 10); // default 60 seconds
 const nowMs = () => Date.now();
 const withTtl = (value) => ({ value, expiresAt: nowMs() + CACHE_TTL_MS });
 const isFresh = (entry) => entry && entry.expiresAt && entry.expiresAt > nowMs();
@@ -130,7 +131,16 @@ const cache = {
     timeseriesByOwnerKey: new Map(), // key: `${owner}:${bucket}:${days}`
     txDetailByHash: new Map(), // key: txHash -> { value, expiresAt }
     tokenPriceBySymbol: new Map(), // key: symbol -> { value: Decimal, expiresAt }
+    assetsByKey: new Map(), // key: `${owner}|${contract}|${limit}|${offset}` -> { value, expiresAt }
 };
+const assetsCacheSet = (key, value) => cache.assetsByKey.set(key, { value, expiresAt: nowMs() + ASSETS_CACHE_TTL_MS });
+const assetsCacheGet = (key) => {
+    const entry = cache.assetsByKey.get(key);
+    if (entry && entry.expiresAt > nowMs()) return entry.value;
+    return null;
+};
+// Coalesce concurrent identical /assets calls
+const assetsInFlightByKey = new Map(); // key -> Promise
 // --- Global StoryScan rate limiter (token bucket, shared across all calls) ---
 let scanTokens = STORYSCAN_RPS;
 let scanLastRefill = Date.now();
@@ -760,6 +770,10 @@ const getAssetsByOwner = async (ownerAddress, limit = 20, offset = 0, tokenContr
     if (!storyApiKey) {
         throw new Error("STORY_PROTOCOL_API_KEY is not set in environment variables.");
     }
+    const key = `${ownerAddress || ''}|${tokenContract || ''}|${limit}|${offset}`;
+    const cached = assetsCacheGet(key);
+    if (cached) return cached;
+    if (assetsInFlightByKey.has(key)) return await assetsInFlightByKey.get(key);
     const whereClause = {};
     if (ownerAddress) whereClause.ownerAddress = ownerAddress.trim();
     if (tokenContract) {
@@ -778,100 +792,112 @@ const getAssetsByOwner = async (ownerAddress, limit = 20, offset = 0, tokenContr
         where: whereClause
     };
 
-    let resp = await fetchStoryApi(STORY_ASSETS_API_BASE_URL, storyApiKey, requestBody, 'POST');
+    let resp;
+    const promise = (async () => {
+        resp = await fetchStoryApi(STORY_ASSETS_API_BASE_URL, storyApiKey, requestBody, 'POST');
 
-    // Fallbacks if empty: try lowercase variants and ipId direct lookup
-    let data = resp.data || [];
-    if (!Array.isArray(data) || data.length === 0) {
-        // 1) lowercase ownerAddress
-        if (ownerAddress && ownerAddress.toLowerCase() !== ownerAddress) {
-            try {
-                const req2 = { ...requestBody, where: { ...whereClause, ownerAddress: ownerAddress.toLowerCase() } };
-                const resp2 = await fetchStoryApi(STORY_ASSETS_API_BASE_URL, storyApiKey, req2, 'POST');
-                data = resp2.data || [];
-                resp = resp2;
-            } catch {}
-        }
-    }
-    if (!Array.isArray(data) || data.length === 0) {
-        // 2) lowercase tokenContract
-        if (tokenContract && tokenContract.toLowerCase() !== tokenContract) {
-            try {
-                const req3 = { ...requestBody, where: { ...whereClause, tokenContract: tokenContract.toLowerCase() } };
-                const resp3 = await fetchStoryApi(STORY_ASSETS_API_BASE_URL, storyApiKey, req3, 'POST');
-                data = resp3.data || [];
-                resp = resp3;
-            } catch {}
-        }
-    }
-    if (!Array.isArray(data) || data.length === 0) {
-        // 3) Direct ipId lookup if input looks like address (user may have pasted IP ID)
-        const candidate = ownerAddress || tokenContract;
-        if (candidate && /^0x[a-fA-F0-9]{40}$/.test(candidate)) {
-            const tryIds = [candidate];
-            const lc = candidate.toLowerCase();
-            if (lc !== candidate) tryIds.push(lc);
-            for (const id of tryIds) {
+        // Fallbacks if empty: try lowercase variants and ipId direct lookup
+        let data = resp.data || [];
+        if (!Array.isArray(data) || data.length === 0) {
+            // 1) lowercase ownerAddress
+            if (ownerAddress && ownerAddress.toLowerCase() !== ownerAddress) {
                 try {
-                    const req4 = { includeLicenses: true, moderated: false, pagination: { limit: 1 }, where: { ipIds: [id] } };
-                    const resp4 = await fetchStoryApi(STORY_ASSETS_API_BASE_URL, storyApiKey, req4, 'POST');
-                    const d4 = resp4.data || [];
-                    if (Array.isArray(d4) && d4.length > 0) {
-                        data = d4;
-                        resp = { ...resp4, pagination: { total: 1, limit: 1, offset: 0 } };
-                        break;
-                    }
+                    const req2 = { ...requestBody, where: { ...whereClause, ownerAddress: ownerAddress.toLowerCase() } };
+                    const resp2 = await fetchStoryApi(STORY_ASSETS_API_BASE_URL, storyApiKey, req2, 'POST');
+                    data = resp2.data || [];
+                    resp = resp2;
                 } catch {}
             }
         }
-    }
+        if (!Array.isArray(data) || data.length === 0) {
+            // 2) lowercase tokenContract
+            if (tokenContract && tokenContract.toLowerCase() !== tokenContract) {
+                try {
+                    const req3 = { ...requestBody, where: { ...whereClause, tokenContract: tokenContract.toLowerCase() } };
+                    const resp3 = await fetchStoryApi(STORY_ASSETS_API_BASE_URL, storyApiKey, req3, 'POST');
+                    data = resp3.data || [];
+                    resp = resp3;
+                } catch {}
+            }
+        }
+        if (!Array.isArray(data) || data.length === 0) {
+            // 3) Direct ipId lookup if input looks like address (user may have pasted IP ID)
+            const candidate = ownerAddress || tokenContract;
+            if (candidate && /^0x[a-fA-F0-9]{40}$/.test(candidate)) {
+                const tryIds = [candidate];
+                const lc = candidate.toLowerCase();
+                if (lc !== candidate) tryIds.push(lc);
+                for (const id of tryIds) {
+                    try {
+                        const req4 = { includeLicenses: true, moderated: false, pagination: { limit: 1 }, where: { ipIds: [id] } };
+                        const resp4 = await fetchStoryApi(STORY_ASSETS_API_BASE_URL, storyApiKey, req4, 'POST');
+                        const d4 = resp4.data || [];
+                        if (Array.isArray(d4) && d4.length > 0) {
+                            data = d4;
+                            resp = { ...resp4, pagination: { total: 1, limit: 1, offset: 0 } };
+                            break;
+                        }
+                    } catch {}
+                }
+            }
+        }
 
-    // If degraded empty due to timeout/5xx, do not treat as definitive not-found
-    const wasDegraded = !!resp.__degraded;
+        // If degraded empty due to timeout/5xx, do not treat as definitive not-found
+        const wasDegraded = !!resp.__degraded;
 
-    // Enrich disputes status and mediaType via IPFS
-    data = data || [];
+        // Enrich disputes status and mediaType via IPFS
+        data = data || [];
+        try {
+            const dispReq = {
+                where: { ipIds: data.map(a => a.ipId).filter(Boolean) },
+                pagination: { limit: data.length || 50 }
+            };
+            const dispResp = await fetchStoryApi(STORY_DISPUTES_API_BASE_URL, storyApiKey, dispReq, 'POST');
+            const dispItems = dispResp.data || dispResp.disputes || [];
+            const ipToStatus = new Map();
+            for (const d of dispItems) {
+                const ip = d?.ipId || d?.ip_id;
+                const status = d?.status || d?.state || 'Active';
+                if (ip) ipToStatus.set(ip, status);
+            }
+            for (const a of data) {
+                if (ipToStatus.has(a.ipId)) a.disputeStatus = ipToStatus.get(a.ipId);
+                if (!a.disputeStatus || a.disputeStatus === 'None') {
+                    try {
+                        const fb = await getDisputeStatusFromTransactions(a.ipId);
+                        if (fb) a.disputeStatus = fb;
+                    } catch {}
+                }
+                // If mediaType missing or UNKNOWN, try detect via nftMetadata.uri (ipfs)
+                const currentMedia = (a.mediaType || '').toUpperCase();
+                const uri = a?.nftMetadata?.image?.cachedUrl || a?.nftMetadata?.raw?.metadata?.image || a?.nftMetadata?.image?.originalUrl || a?.nftMetadata?.uri;
+                if ((!currentMedia || currentMedia === 'UNKNOWN') && uri) {
+                    try {
+                        const ct = await detectMediaTypeFromIpfs(uri);
+                        if (ct) {
+                            if (ct.startsWith('image/')) a.mediaType = 'IMAGE';
+                            else if (ct.startsWith('video/')) a.mediaType = 'VIDEO';
+                            else if (ct.startsWith('audio/')) a.mediaType = 'AUDIO';
+                            else a.mediaType = ct.toUpperCase();
+                        }
+                    } catch {}
+                }
+            }
+        } catch (e) {
+            // ignore disputes enrich failure
+        }
+
+        const result = { ...resp, data, __degraded: wasDegraded };
+        assetsCacheSet(key, result);
+        return result;
+    })();
+    assetsInFlightByKey.set(key, promise);
     try {
-        const dispReq = {
-            where: { ipIds: data.map(a => a.ipId).filter(Boolean) },
-            pagination: { limit: data.length || 50 }
-        };
-        const dispResp = await fetchStoryApi(STORY_DISPUTES_API_BASE_URL, storyApiKey, dispReq, 'POST');
-        const dispItems = dispResp.data || dispResp.disputes || [];
-        const ipToStatus = new Map();
-        for (const d of dispItems) {
-            const ip = d?.ipId || d?.ip_id;
-            const status = d?.status || d?.state || 'Active';
-            if (ip) ipToStatus.set(ip, status);
-        }
-        for (const a of data) {
-            if (ipToStatus.has(a.ipId)) a.disputeStatus = ipToStatus.get(a.ipId);
-            if (!a.disputeStatus || a.disputeStatus === 'None') {
-                try {
-                    const fb = await getDisputeStatusFromTransactions(a.ipId);
-                    if (fb) a.disputeStatus = fb;
-                } catch {}
-            }
-            // If mediaType missing or UNKNOWN, try detect via nftMetadata.uri (ipfs)
-            const currentMedia = (a.mediaType || '').toUpperCase();
-            const uri = a?.nftMetadata?.image?.cachedUrl || a?.nftMetadata?.raw?.metadata?.image || a?.nftMetadata?.image?.originalUrl || a?.nftMetadata?.uri;
-            if ((!currentMedia || currentMedia === 'UNKNOWN') && uri) {
-                try {
-                    const ct = await detectMediaTypeFromIpfs(uri);
-                    if (ct) {
-                        if (ct.startsWith('image/')) a.mediaType = 'IMAGE';
-                        else if (ct.startsWith('video/')) a.mediaType = 'VIDEO';
-                        else if (ct.startsWith('audio/')) a.mediaType = 'AUDIO';
-                        else a.mediaType = ct.toUpperCase();
-                    }
-                } catch {}
-            }
-        }
-    } catch (e) {
-        // ignore disputes enrich failure
+        const out = await promise;
+        return out;
+    } finally {
+        assetsInFlightByKey.delete(key);
     }
-
-    return { ...resp, data, __degraded: wasDegraded };
 };
 
 /**

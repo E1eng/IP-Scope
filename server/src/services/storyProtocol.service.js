@@ -82,6 +82,7 @@ const formatUsdtCurrency = (decimalValue) => {
 
 const STORY_ASSETS_API_BASE_URL = 'https://api.storyapis.com/api/v4/assets';
 const STORY_TRANSACTIONS_API_BASE_URL = 'https://api.storyapis.com/api/v4/transactions';
+const STORY_DISPUTES_API_BASE_URL = 'https://api.storyapis.com/api/v4/disputes';
 const STORYSCAN_API_BASE_URL = 'https://www.storyscan.io/api/v2';
 const STORY_TRANSACTION_DETAIL_BASE_URL = `${STORYSCAN_API_BASE_URL}/transactions`;
 
@@ -491,7 +492,30 @@ const getAssetsByOwner = async (ownerAddress, limit = 20, offset = 0, tokenContr
     };
 
     const resp = await fetchStoryApi(STORY_ASSETS_API_BASE_URL, storyApiKey, requestBody, 'POST');
-    return resp;
+
+    // Enrich disputes status via disputes API
+    const data = resp.data || [];
+    try {
+        const dispReq = {
+            where: { ipIds: data.map(a => a.ipId).filter(Boolean) },
+            pagination: { limit: data.length || 50 }
+        };
+        const dispResp = await fetchStoryApi(STORY_DISPUTES_API_BASE_URL, storyApiKey, dispReq, 'POST');
+        const dispItems = dispResp.data || dispResp.disputes || [];
+        const ipToStatus = new Map();
+        for (const d of dispItems) {
+            const ip = d?.ipId || d?.ip_id;
+            const status = d?.status || d?.state || 'Active';
+            if (ip) ipToStatus.set(ip, status);
+        }
+        for (const a of data) {
+            if (ipToStatus.has(a.ipId)) a.disputeStatus = ipToStatus.get(a.ipId);
+        }
+    } catch (e) {
+        // ignore disputes enrich failure
+    }
+
+    return { ...resp, data };
 };
 
 /**
@@ -643,7 +667,24 @@ const getAssetDetails = async (ipId) => {
     const asset = (resp.data && resp.data.length > 0) ? resp.data[0] : null;
     if (!asset) return null;
 
-    const assetDisputeStatus = asset.disputeStatus || 'None';
+    // Fetch dispute status via disputes API (more reliable)
+    let assetDisputeStatus = asset.disputeStatus || 'None';
+    try {
+        const dispReq = {
+            where: { ipIds: [ipId] },
+            pagination: { limit: 1 },
+            orderBy: 'blockNumber',
+            orderDirection: 'desc'
+        };
+        const dispResp = await fetchStoryApi(STORY_DISPUTES_API_BASE_URL, storyApiKey, dispReq, 'POST');
+        const dispItems = dispResp.data || dispResp.disputes || [];
+        if (Array.isArray(dispItems) && dispItems.length > 0) {
+            const status = dispItems[0]?.status || dispItems[0]?.state || 'Active';
+            assetDisputeStatus = status;
+        }
+    } catch (e) {
+        // fallback: keep existing status
+    }
     const analytics = {};
 
     try {

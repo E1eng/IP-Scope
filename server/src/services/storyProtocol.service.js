@@ -445,23 +445,38 @@ const getAndAggregateRoyaltyEventsFromApi = async (ipId) => {
     if (!ipId) {
         throw new Error("ipId is required");
     }
-    
-    // Fetch ALL RoyaltyPaid events with pagination and lowercase fallback
-    const events = await fetchRoyaltyEventsPaginated(ipId, 200, 200);
+
+    // Original behavior: query AS-IS then lowercase fallback (no full pagination here)
+    const buildRequest = (id) => ({
+        where: { eventTypes: ["RoyaltyPaid"], ipIds: [id] },
+        pagination: { limit: 200 },
+        orderBy: "blockNumber",
+        orderDirection: "desc"
+    });
+
+    let txResp = await fetchStoryApi(STORY_TRANSACTIONS_API_BASE_URL, storyApiKey, buildRequest(ipId), 'POST');
+    let events = txResp.events || txResp.data || [];
+
+    if ((!events || events.length === 0) && ipId.toLowerCase() !== ipId) {
+        txResp = await fetchStoryApi(STORY_TRANSACTIONS_API_BASE_URL, storyApiKey, buildRequest(ipId.toLowerCase()), 'POST');
+        events = txResp.events || txResp.data || [];
+    }
+
     if (!events || events.length === 0) {
         console.log(`[AGGR RESULT] IP ID ${ipId}: No RoyaltyPaid events found.`);
         return { totalRoyaltiesByToken: new Map(), licenseeMap: new Map() };
     }
 
-    // Fetch StoryScan details with 10 rps cap
-    const txHashes = events.map(ev => ev.transactionHash || ev.txHash || ev.hash || ev.transaction?.hash).filter(Boolean);
-    const detailed = await mapWithRpsLimit(txHashes, 10, async (txHash) => {
+    // Fetch StoryScan details (rate limited via cache, still uses Promise.all for this limited set)
+    const detailPromises = events.map(ev => {
+        const txHash = ev.transactionHash || ev.txHash || ev.hash || ev.transaction?.hash;
         const cached = getTxDetailCache(txHash);
-        if (cached) return { txHash, detail: cached };
-        const detail = await fetchTransactionDetailFromStoryScan(txHash).catch(() => ({ amount: 0n, decimals: 18, symbol: 'ETH', tokenAddress: null, exchangeRateUsd: null, from: null }));
-        setTxDetailCache(txHash, detail);
-        return { txHash, detail };
+        if (cached) return Promise.resolve({ txHash, detail: cached });
+        return fetchTransactionDetailFromStoryScan(txHash)
+            .then(detail => { setTxDetailCache(txHash, detail); return { txHash, detail }; })
+            .catch(() => ({ txHash, detail: { amount: 0n, decimals: 18, symbol: 'ETH', tokenAddress: null, exchangeRateUsd: null, from: null } }));
     });
+    const detailed = await Promise.all(detailPromises);
 
     const totalRoyaltiesByToken = new Map();
     const licenseeMap = new Map();

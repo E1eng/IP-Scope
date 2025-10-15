@@ -41,6 +41,7 @@ function ExplorerPage() {
 
   // Efek untuk mengambil statistik dashboard (REAL)
   const progressIntervalRef = useRef(null);
+  const lastRequestedAddressRef = useRef(null);
 
   useEffect(() => {
     const fetchDashboardStats = async () => {
@@ -62,12 +63,20 @@ function ExplorerPage() {
             setSupportsProgress(true);
             hasFinalizedRef.current = false;
             const params = new URLSearchParams({ ownerAddress: addressForStats });
+            // reset progress state and clear any prior polling
+            if (progressIntervalRef.current) {
+              clearInterval(progressIntervalRef.current);
+              progressIntervalRef.current = null;
+            }
+            lastRequestedAddressRef.current = addressForStats;
+            setProgress({ running: false, percent: 0, displayPartial: '$0.00 USDT' });
 
             // Helper: finalize fetch when progress endpoints unsupported
             const finalizeNow = async () => {
               if (hasFinalizedRef.current) return;
               hasFinalizedRef.current = true;
               try {
+                if (lastRequestedAddressRef.current !== addressForStats) return; // stale
                 const response = await axios.get(`${API_BASE_URL}/stats?${params.toString()}`);
                 setStats(prev => ({
                   ...prev,
@@ -113,6 +122,7 @@ function ExplorerPage() {
               const poll = async () => {
                 try {
                   const prog = await axios.get(`${API_BASE_URL}/stats/progress?${params.toString()}`);
+                  if (lastRequestedAddressRef.current !== addressForStats) return; // ignore stale
                   setProgress(prog.data || { running: false, percent: 0, displayPartial: '$0.00 USDT' });
                 } catch (e) {
                   if (e?.response?.status === 404) {
@@ -153,6 +163,13 @@ function ExplorerPage() {
         }
     };
     fetchDashboardStats();
+    // cleanup on deps change/unmount
+    return () => {
+      if (progressIntervalRef.current) {
+        clearInterval(progressIntervalRef.current);
+        progressIntervalRef.current = null;
+      }
+    };
   }, [currentAddress, currentTokenContract, totalResults, updateSearchState, API_BASE_URL]);
 
   // Finalize when progress done
@@ -165,6 +182,7 @@ function ExplorerPage() {
     const finalize = async () => {
       try {
         setStatsLoading(true);
+        if (lastRequestedAddressRef.current !== addressForStats) return; // stale
         const response = await axios.get(`${API_BASE_URL}/stats?${params.toString()}`);
         setStats(prev => ({
           ...prev,
@@ -175,7 +193,7 @@ function ExplorerPage() {
         // leaderboard after stats
         try {
           setLeaderboardLoading(true);
-          const lbRes = await axios.get(`${API_BASE_URL}/stats/leaderboard/assets?${params.toString()}&limit=500`);
+              const lbRes = await axios.get(`${API_BASE_URL}/stats/leaderboard/assets?${params.toString()}&limit=500`);
           const map = {};
           const rows = lbRes.data?.data || lbRes.data || [];
           rows.forEach(row => { if (row?.ipId) map[row.ipId] = row.usdtValue; });
@@ -418,7 +436,7 @@ function ExplorerPage() {
         {/* Header Dashboard Stats */}
         {hasSearched && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-                <StatCard title="Total Royalties Collected" value={progress.running ? (progress.displayPartial || stats.totalRoyalties) : stats.totalRoyalties} icon="royalty" isLoading={statsLoading} progressPercent={progress.running ? progress.percent : null} tooltip={stats.breakdownByToken ? stats.breakdownByToken.map(b=>`${b.symbol}: ${b.amountFormatted} (~$${(b.usdtValue||0).toLocaleString()})`).join(' \n') : null} />
+                <StatCard title="Total Royalties Collected" value={(supportsProgress && progress.running) ? (progress.displayPartial || stats.totalRoyalties) : stats.totalRoyalties} icon="royalty" isLoading={statsLoading} progressPercent={(supportsProgress && progress.running) ? progress.percent : null} tooltip={stats.breakdownByToken ? stats.breakdownByToken.map(b=>`${b.symbol}: ${b.amountFormatted} (~$${(b.usdtValue||0).toLocaleString()})`).join(' \n') : null} />
                 <StatCard title="Total IP Assets Found" value={stats.totalAssets.toLocaleString()} icon="asset" /> 
                 <StatCard 
                     title="Total Dispute Status" 

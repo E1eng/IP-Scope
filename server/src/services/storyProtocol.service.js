@@ -127,6 +127,51 @@ const getTokenPrice = (symbol) => {
     return null;
 };
 
+// --- Disputes helpers with robust fallbacks ---
+const normalizeDisputesResponse = (resp) => {
+    if (!resp) return [];
+    if (Array.isArray(resp)) return resp;
+    if (Array.isArray(resp.data)) return resp.data;
+    if (Array.isArray(resp.disputes)) return resp.disputes;
+    return [];
+};
+
+const getDisputesByWhere = async (where, limit = 10) => {
+    const body = { where, pagination: { limit } };
+    const resp = await fetchStoryApi(STORY_DISPUTES_API_BASE_URL, storyApiKey, body, 'POST');
+    return normalizeDisputesResponse(resp);
+};
+
+const getDisputeStatusForIpId = async (ipId) => {
+    if (!ipId) return null;
+    // Try ipIds array
+    try {
+        const arr = await getDisputesByWhere({ ipIds: [ipId] }, 1);
+        if (arr.length > 0) return arr[0]?.status || arr[0]?.state || 'Active';
+    } catch {}
+    // Try ipId single
+    try {
+        const arr = await getDisputesByWhere({ ipId }, 1);
+        if (arr.length > 0) return arr[0]?.status || arr[0]?.state || 'Active';
+    } catch {}
+    // Try lowercase
+    try {
+        const lc = ipId.toLowerCase();
+        if (lc !== ipId) {
+            const arr = await getDisputesByWhere({ ipIds: [lc] }, 1);
+            if (arr.length > 0) return arr[0]?.status || arr[0]?.state || 'Active';
+        }
+    } catch {}
+    // GET fallback with query param
+    try {
+        const url = `${STORY_DISPUTES_API_BASE_URL}?ipId=${encodeURIComponent(ipId)}`;
+        const resp = await axios.get(url, { headers: { 'X-Api-Key': storyApiKey }, timeout: 10000 });
+        const arr = normalizeDisputesResponse(resp.data);
+        if (arr.length > 0) return arr[0]?.status || arr[0]?.state || 'Active';
+    } catch {}
+    return null;
+};
+
 // --- Progress tracking for streaming aggregation ---
 const progressByOwner = new Map(); // owner => { running, totalAssets, processedAssets, percent, displayPartial, updatedAt }
 

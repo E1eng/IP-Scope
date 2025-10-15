@@ -385,10 +385,17 @@ const startPortfolioAggregation = async (ownerAddress) => {
             // Finalize: compute full result and populate cache
             let finalUsdt = new Decimal(0);
             for (const [, d] of totalsByToken.entries()) finalUsdt = finalUsdt.add(d.usdt || 0);
+            // Compute dispute counts across loaded assets
+            let activeDisputeCount = 0;
+            for (const a of allAssets) {
+                const s = String(a.disputeStatus || '').toLowerCase();
+                if (s === 'active') activeDisputeCount++;
+            }
+            const overallDisputeStatus = activeDisputeCount > 0 ? String(activeDisputeCount) : '0';
             const result = {
                 totalAssets,
                 totalRoyalties: formatUsdtCurrency(finalUsdt),
-                overallDisputeStatus: '0',
+                overallDisputeStatus,
                 breakdownByToken: Array.from(totalsByToken.entries()).map(([symbol, d]) => ({
                     symbol,
                     address: null,

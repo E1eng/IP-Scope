@@ -112,6 +112,7 @@ const STORY_TRANSACTION_DETAIL_BASE_URL = `${STORYSCAN_API_BASE_URL}/transaction
 const storyApiKey = process.env.STORY_PROTOCOL_API_KEY;
 const storyScanApiKey = process.env.STORYSCAN_API_KEY;
 const DEBUG_AGGR_LOGS = process.env.DEBUG_AGGR_LOGS === '1';
+const STORYSCAN_RPS = parseInt(process.env.STORYSCAN_RPS || '10', 10);
 
 // --- Simple in-memory cache to speed up repeated heavy aggregations ---
 const CACHE_TTL_MS = parseInt(process.env.AGGREGATION_CACHE_TTL_MS || '300000', 10); // default 5 minutes
@@ -128,6 +129,48 @@ const cache = {
     timeseriesByOwnerKey: new Map(), // key: `${owner}:${bucket}:${days}`
     txDetailByHash: new Map(), // key: txHash -> { value, expiresAt }
     tokenPriceBySymbol: new Map(), // key: symbol -> { value: Decimal, expiresAt }
+};
+// --- Global StoryScan rate limiter (token bucket, shared across all calls) ---
+let scanTokens = STORYSCAN_RPS;
+let scanLastRefill = Date.now();
+const refillIntervalMs = 1000;
+const refillScanTokens = () => {
+    const now = Date.now();
+    const elapsed = now - scanLastRefill;
+    if (elapsed >= refillIntervalMs) {
+        const refillCount = Math.floor(elapsed / refillIntervalMs);
+        scanTokens = Math.min(STORYSCAN_RPS, scanTokens + refillCount * STORYSCAN_RPS);
+        scanLastRefill += refillCount * refillIntervalMs;
+    }
+};
+const acquireScanToken = async () => {
+    // wait until a token is available
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+        refillScanTokens();
+        if (scanTokens > 0) {
+            scanTokens -= 1;
+            return;
+        }
+        // sleep a short time before checking again
+        // eslint-disable-next-line no-await-in-loop
+        await sleep(50);
+    }
+};
+const limitedStoryScanGet = async (url, options = {}, retries = 3) => {
+    await acquireScanToken();
+    try {
+        return await axios.get(url, options);
+    } catch (e) {
+        const status = e.response?.status;
+        // On 429, backoff with jitter and retry
+        if (status === 429 && retries > 0) {
+            const backoffMs = 700 * (4 - retries) + Math.floor(Math.random() * 200);
+            await sleep(backoffMs);
+            return limitedStoryScanGet(url, options, retries - 1);
+        }
+        throw e;
+    }
 };
 
 const setTxDetailCache = (txHash, detail) => {
@@ -446,7 +489,7 @@ const fetchTransactionDetailFromStoryScan = async (txHash) => {
 
     try {
         const url = `${STORY_TRANSACTION_DETAIL_BASE_URL}/${txHash}`;
-        const resp = await axios.get(url, { headers: { 'X-Api-Key': storyScanApiKey }, timeout: 10000 });
+        const resp = await limitedStoryScanGet(url, { headers: { 'X-Api-Key': storyScanApiKey }, timeout: 10000 });
         const txData = resp.data || {};
 
         // prefer token_transfers first element if exists, else fallback to other fields
@@ -1105,5 +1148,7 @@ module.exports = {
     getAssetsStatusSummary,
     // streaming/progress helpers
     startPortfolioAggregation,
-    getProgress
+    getProgress,
+    // expose rate-limited StoryScan GET for other modules (routes)
+    limitedStoryScanGet
 };

@@ -14,6 +14,10 @@ const searchAssets = async (req, res) => {
 
     // service.getAssetsByOwner returns { data: [], pagination: {} }
     const result = await service.getAssetsByOwner(owner, limit, offset, tokenContract);
+    // Soft-fail: if backend degraded due to timeout, return 202 Accepted-like hint
+    if (result.__degraded) {
+      return res.status(202).json({ data: result.data || [], pagination: result.pagination || { total: 0, limit, offset }, degraded: true });
+    }
     // Ensure pagination shape
     const pagination = result.pagination || { total: (result.data || []).length, limit, offset };
     return res.json({ data: result.data || [], pagination });

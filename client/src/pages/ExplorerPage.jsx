@@ -255,7 +255,14 @@ function ExplorerPage() {
     }
 
     // FIX: Tambahkan timeout eksplisit 10 detik
-    const response = await axios.get(`${API_BASE_URL}/assets?${params.toString()}`, { timeout: 10000 });
+    const response = await axios.get(`${API_BASE_URL}/assets?${params.toString()}`, { timeout: 15000, validateStatus: () => true });
+    if (response.status === 202) {
+      // degraded: keep existing list, show gentle message (no hard error)
+      return response.data; // may contain { degraded: true }
+    }
+    if (response.status >= 400) {
+      throw new Error(response.data?.message || `Failed to fetch assets (${response.status})`);
+    }
     return response.data; // { data, pagination }
   }, [API_BASE_URL]);
 
@@ -347,11 +354,17 @@ function ExplorerPage() {
             setHasMore(newOffset < total); 
         } else if (newSearch) {
             // Final Failure State
-            updateSearchState({ results: [], offset: 0, totalResults: 0, hasSearched: true, currentQuery: null, currentTokenContract: null });
-            setError(
-                finalError?.response?.data?.message || "No assets found. The address is neither an owner nor a token contract, or there is a network issue."
-            );
-            setHasMore(false);
+            if (responseData?.degraded) {
+              // Soft degrade: don't clear previous results; show gentle note
+              setError("Network busy. Retrying…");
+              setHasMore(true);
+            } else {
+              updateSearchState({ results: [], offset: 0, totalResults: 0, hasSearched: true, currentQuery: null, currentTokenContract: null });
+              setError(
+                  finalError?.response?.data?.message || "No assets found. The address is neither an owner nor a token contract, or there is a network issue."
+              );
+              setHasMore(false);
+            }
         }
     } catch (e) {
         // Tangkap error kritis yang mungkin terjadi selama manipulasi state

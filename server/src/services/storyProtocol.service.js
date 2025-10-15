@@ -475,9 +475,9 @@ const fetchStoryApi = async (url, apiKey, body = {}, method = 'POST') => {
         // For 5xx or timeouts/no-response: degrade to empty to keep UI responsive
         if (!status || status >= 500 || error.code === 'ECONNABORTED') {
             console.error(`[SERVICE_ERROR] Failed calling ${url}. Status: ${status || 'N/A'}. Message: ${error.message}`);
-            if (url.includes(STORY_ASSETS_API_BASE_URL)) return { data: [], pagination: { total: 0 } };
-            if (url.includes(STORY_TRANSACTIONS_API_BASE_URL)) return { events: [] };
-            if (typeof STORY_DISPUTES_API_BASE_URL !== 'undefined' && url.includes(STORY_DISPUTES_API_BASE_URL)) return { data: [] };
+            if (url.includes(STORY_ASSETS_API_BASE_URL)) return { data: [], pagination: { total: 0 }, __degraded: true };
+            if (url.includes(STORY_TRANSACTIONS_API_BASE_URL)) return { events: [], __degraded: true };
+            if (typeof STORY_DISPUTES_API_BASE_URL !== 'undefined' && url.includes(STORY_DISPUTES_API_BASE_URL)) return { data: [], __degraded: true };
         }
         // Diagnostic logs for other cases
         console.error(`[SERVICE_ERROR] Failed calling ${url}. Status: ${status || 'N/A'}. Message: ${error.message}`);
@@ -784,6 +784,9 @@ const getAssetsByOwner = async (ownerAddress, limit = 20, offset = 0, tokenContr
         }
     }
 
+    // If degraded empty due to timeout/5xx, do not treat as definitive not-found
+    const wasDegraded = !!resp.__degraded;
+
     // Enrich disputes status and mediaType via IPFS
     data = data || [];
     try {
@@ -826,7 +829,7 @@ const getAssetsByOwner = async (ownerAddress, limit = 20, offset = 0, tokenContr
         // ignore disputes enrich failure
     }
 
-    return { ...resp, data };
+    return { ...resp, data, __degraded: wasDegraded };
 };
 
 /**

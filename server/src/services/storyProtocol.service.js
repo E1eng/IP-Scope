@@ -584,6 +584,26 @@ const getAndAggregateRoyaltyEventsFromApi = async (ipId) => {
  * getAssetsByOwner(owner, limit, offset, tokenContract)
  * - wrapper to call Story Assets API and return normalized shape
  */
+const detectMediaTypeFromIpfs = async (uri) => {
+    try {
+        if (!uri || typeof uri !== 'string') return null;
+        // Resolve IPFS to public gateway
+        const url = uri.startsWith('ipfs://') ? uri.replace('ipfs://', 'https://ipfs.io/ipfs/') : uri;
+        const resp = await axios.head(url, { timeout: 8000 });
+        const ct = resp.headers?.['content-type'] || resp.headers?.['Content-Type'];
+        if (typeof ct === 'string' && ct.trim().length > 0) return ct.split(';')[0].trim();
+    } catch (e) {
+        // HEAD might be blocked; try GET minimal bytes
+        try {
+            const url = uri.startsWith('ipfs://') ? uri.replace('ipfs://', 'https://ipfs.io/ipfs/') : uri;
+            const resp = await axios.get(url, { responseType: 'arraybuffer', timeout: 8000, headers: { Range: 'bytes=0-64' } });
+            const ct = resp.headers?.['content-type'] || resp.headers?.['Content-Type'];
+            if (typeof ct === 'string' && ct.trim().length > 0) return ct.split(';')[0].trim();
+        } catch {}
+    }
+    return null;
+};
+
 const getAssetsByOwner = async (ownerAddress, limit = 20, offset = 0, tokenContract) => {
     if (!storyApiKey) {
         throw new Error("STORY_PROTOCOL_API_KEY is not set in environment variables.");
@@ -608,7 +628,7 @@ const getAssetsByOwner = async (ownerAddress, limit = 20, offset = 0, tokenContr
 
     const resp = await fetchStoryApi(STORY_ASSETS_API_BASE_URL, storyApiKey, requestBody, 'POST');
 
-    // Enrich disputes status via disputes API
+    // Enrich disputes status and mediaType via IPFS
     const data = resp.data || [];
     try {
         const dispReq = {
@@ -625,6 +645,20 @@ const getAssetsByOwner = async (ownerAddress, limit = 20, offset = 0, tokenContr
         }
         for (const a of data) {
             if (ipToStatus.has(a.ipId)) a.disputeStatus = ipToStatus.get(a.ipId);
+            // If mediaType missing or UNKNOWN, try detect via nftMetadata.uri (ipfs)
+            const currentMedia = (a.mediaType || '').toUpperCase();
+            const uri = a?.nftMetadata?.image?.cachedUrl || a?.nftMetadata?.raw?.metadata?.image || a?.nftMetadata?.image?.originalUrl || a?.nftMetadata?.uri;
+            if ((!currentMedia || currentMedia === 'UNKNOWN') && uri) {
+                try {
+                    const ct = await detectMediaTypeFromIpfs(uri);
+                    if (ct) {
+                        if (ct.startsWith('image/')) a.mediaType = 'IMAGE';
+                        else if (ct.startsWith('video/')) a.mediaType = 'VIDEO';
+                        else if (ct.startsWith('audio/')) a.mediaType = 'AUDIO';
+                        else a.mediaType = ct.toUpperCase();
+                    }
+                } catch {}
+            }
         }
     } catch (e) {
         // ignore disputes enrich failure

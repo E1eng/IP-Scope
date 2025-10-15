@@ -80,6 +80,29 @@ const formatUsdtCurrency = (decimalValue) => {
     }
 };
 
+// --- Timestamp helpers ---
+const normalizeTimestampSec = (ts) => {
+    try {
+        if (ts === null || ts === undefined) return null;
+        if (typeof ts === 'number') {
+            if (!Number.isFinite(ts)) return null;
+            // treat as seconds if looks like seconds, else ms
+            return ts > 1e12 ? Math.floor(ts / 1000) : Math.floor(ts);
+        }
+        if (typeof ts === 'string') {
+            const asInt = parseInt(ts, 10);
+            if (Number.isFinite(asInt) && !isNaN(asInt)) {
+                return asInt > 1e12 ? Math.floor(asInt / 1000) : asInt;
+            }
+            const parsed = Date.parse(ts); // milliseconds
+            if (Number.isFinite(parsed)) return Math.floor(parsed / 1000);
+        }
+        return null;
+    } catch {
+        return null;
+    }
+};
+
 const STORY_ASSETS_API_BASE_URL = 'https://api.storyapis.com/api/v4/assets';
 const STORY_TRANSACTIONS_API_BASE_URL = 'https://api.storyapis.com/api/v4/transactions';
 const STORY_DISPUTES_API_BASE_URL = 'https://api.storyapis.com/api/v4/disputes';
@@ -811,7 +834,8 @@ const getRoyaltyTransactions = async (ipId) => {
                 const symbol = d.detail.symbol || 'ETH';
                 const decimals = d.detail.decimals || 18;
                 const from = d.detail.from || 'N/A';
-                const timestamp = d.detail.timestamp ? (new Date(d.detail.timestamp * 1000)).toISOString() : null;
+                const tsSec = normalizeTimestampSec(d.detail.timestamp);
+                const timestamp = tsSec ? (new Date(tsSec * 1000)).toISOString() : null;
                 return {
                     txHash: d.txHash,
                     from,

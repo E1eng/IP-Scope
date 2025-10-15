@@ -360,6 +360,7 @@ function ExplorerPage() {
   
   const handleLoadMore = () => {
       const addressToLoad = currentAddress || currentTokenContract;
+      if (isLoadingMore) return;
       if (addressToLoad) {
           handleFetchAssets(addressToLoad, false);
       }

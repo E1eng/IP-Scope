@@ -111,6 +111,7 @@ const STORY_TRANSACTION_DETAIL_BASE_URL = `${STORYSCAN_API_BASE_URL}/transaction
 
 const storyApiKey = process.env.STORY_PROTOCOL_API_KEY;
 const storyScanApiKey = process.env.STORYSCAN_API_KEY;
+const DEBUG_AGGR_LOGS = process.env.DEBUG_AGGR_LOGS === '1';
 
 // --- Simple in-memory cache to speed up repeated heavy aggregations ---
 const CACHE_TTL_MS = parseInt(process.env.AGGREGATION_CACHE_TTL_MS || '300000', 10); // default 5 minutes
@@ -319,11 +320,29 @@ const fetchStoryApi = async (url, apiKey, body = {}, method = 'POST') => {
             'Content-Type': 'application/json',
         },
         data: body,
-        timeout: 15000,
+        timeout: 20000,
+    };
+
+    const fetchWithRetry = async (opts, retries = 2, backoffMs = 600) => {
+        let attempt = 0;
+        // eslint-disable-next-line no-constant-condition
+        while (true) {
+            try {
+                return await axios(opts);
+            } catch (err) {
+                const status = err.response?.status;
+                const retriable = !status || status >= 500 || err.code === 'ECONNABORTED';
+                if (attempt >= retries || !retriable) throw err;
+                // backoff
+                // eslint-disable-next-line no-await-in-loop
+                await sleep(backoffMs * Math.pow(2, attempt));
+                attempt += 1;
+            }
+        }
     };
 
     try {
-        const response = await axios(options);
+        const response = await fetchWithRetry(options);
         // The Story API sometimes uses .data.data or .data.events
         const respData = response.data || {};
         if (url.includes(STORY_ASSETS_API_BASE_URL)) {
@@ -343,7 +362,14 @@ const fetchStoryApi = async (url, apiKey, body = {}, method = 'POST') => {
             if (url.includes(STORY_TRANSACTIONS_API_BASE_URL)) return { events: [] };
             if (typeof STORY_DISPUTES_API_BASE_URL !== 'undefined' && url.includes(STORY_DISPUTES_API_BASE_URL)) return { data: [] };
         }
-        // Diagnostic logs
+        // For 5xx or timeouts/no-response: degrade to empty to keep UI responsive
+        if (!status || status >= 500 || error.code === 'ECONNABORTED') {
+            console.error(`[SERVICE_ERROR] Failed calling ${url}. Status: ${status || 'N/A'}. Message: ${error.message}`);
+            if (url.includes(STORY_ASSETS_API_BASE_URL)) return { data: [], pagination: { total: 0 } };
+            if (url.includes(STORY_TRANSACTIONS_API_BASE_URL)) return { events: [] };
+            if (typeof STORY_DISPUTES_API_BASE_URL !== 'undefined' && url.includes(STORY_DISPUTES_API_BASE_URL)) return { data: [] };
+        }
+        // Diagnostic logs for other cases
         console.error(`[SERVICE_ERROR] Failed calling ${url}. Status: ${status || 'N/A'}. Message: ${error.message}`);
         if (status === 429) console.error('>>> DIAGNOSTIC: Rate-limited by Story API (429)');
         // bubble up a user-friendly error
@@ -491,7 +517,7 @@ const getAndAggregateRoyaltyEventsFromApi = async (ipId) => {
     }
 
     if (!events || events.length === 0) {
-        console.log(`[AGGR RESULT] IP ID ${ipId}: No RoyaltyPaid events found.`);
+        if (DEBUG_AGGR_LOGS) console.log(`[AGGR RESULT] IP ID ${ipId}: No RoyaltyPaid events found.`);
         return { totalRoyaltiesByToken: new Map(), licenseeMap: new Map() };
     }
 
@@ -545,9 +571,9 @@ const getAndAggregateRoyaltyEventsFromApi = async (ipId) => {
     }
 
     if (totalEthWei > 0n) {
-        console.log(`[AGGR RESULT] IP ID ${ipId}: SUCCESS. Total ETH/WETH Wei: ${totalEthWei.toString()}`);
+        if (DEBUG_AGGR_LOGS) console.log(`[AGGR RESULT] IP ID ${ipId}: SUCCESS. Total ETH/WETH Wei: ${totalEthWei.toString()}`);
     } else {
-        console.log(`[AGGR RESULT] IP ID ${ipId}: No valuable transfers found (Final Sum: 0).`);
+        if (DEBUG_AGGR_LOGS) console.log(`[AGGR RESULT] IP ID ${ipId}: No valuable transfers found (Final Sum: 0).`);
     }
 
     return { totalRoyaltiesByToken, licenseeMap };

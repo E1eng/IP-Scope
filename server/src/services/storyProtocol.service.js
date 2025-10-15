@@ -268,6 +268,7 @@ const fetchStoryApi = async (url, apiKey, body = {}, method = 'POST') => {
         if (status === 404 || status === 400 || status === 422) {
             if (url.includes(STORY_ASSETS_API_BASE_URL)) return { data: [], pagination: { total: 0 } };
             if (url.includes(STORY_TRANSACTIONS_API_BASE_URL)) return { events: [] };
+            if (typeof STORY_DISPUTES_API_BASE_URL !== 'undefined' && url.includes(STORY_DISPUTES_API_BASE_URL)) return { data: [] };
         }
         // Diagnostic logs
         console.error(`[SERVICE_ERROR] Failed calling ${url}. Status: ${status || 'N/A'}. Message: ${error.message}`);

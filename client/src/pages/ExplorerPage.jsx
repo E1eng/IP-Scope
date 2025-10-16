@@ -5,6 +5,7 @@ import AssetTable from '../components/AssetTable';
 import RemixDetailModal from '../components/RemixDetailModal';
 import { useSearch } from '../SearchContext'; 
 import TimeseriesChart from '../components/TimeseriesChart';
+import PieChart from '../components/PieChart';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 const PAGE_LIMIT = 20;
@@ -43,6 +44,8 @@ function ExplorerPage() {
   const [tsBucket, setTsBucket] = useState('daily');
   const [tsDays, setTsDays] = useState(90);
   const [tsMode, setTsMode] = useState('area'); // 'area' | 'candle'
+  const [mediaDist, setMediaDist] = useState(null);
+  const [mediaLoading, setMediaLoading] = useState(false);
 
   const rollupDailyPoints = useCallback((dailyPoints, targetBucket) => {
     if (!Array.isArray(dailyPoints) || dailyPoints.length === 0) return [];
@@ -165,6 +168,17 @@ function ExplorerPage() {
               setTsData([]);
             } finally {
               setTsLoading(false);
+            }
+
+            // Media distribution (non-blocking)
+            try {
+              setMediaLoading(true);
+              const mResp = await axios.get(`${API_BASE_URL}/stats/media-distribution?${params.toString()}`);
+              setMediaDist(mResp.data || null);
+            } catch (_) {
+              setMediaDist(null);
+            } finally {
+              setMediaLoading(false);
             }
 
             // Try to start async aggregation (if supported by backend)
@@ -559,7 +573,7 @@ function ExplorerPage() {
             </div>
         )}
         
-        {/* Timeseries Analytics */}
+        {/* Timeseries + Distribution Analytics */}
         {hasSearched && (
           <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
             <div className="flex items-center justify-between mb-4">
@@ -594,12 +608,29 @@ function ExplorerPage() {
                 </select>
               </div>
             </div>
-            <div className="w-full">
-              {tsLoading ? (
-                <div className="text-center p-6 text-purple-400">Loading timeseries…</div>
-              ) : (
-                <TimeseriesChart data={tsData} bucket={tsBucket} mode={tsMode} />
-              )}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 w-full">
+              <div>
+                {tsLoading ? (
+                  <div className="text-center p-6 text-purple-400">Loading timeseries…</div>
+                ) : (
+                  <TimeseriesChart data={tsData} bucket={tsBucket} mode={tsMode} />
+                )}
+              </div>
+              <div className="bg-gray-900/40 rounded-xl p-4 border border-gray-700">
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-sm font-bold text-purple-300">Media Type Distribution</h4>
+                </div>
+                {mediaLoading ? (
+                  <div className="text-center p-6 text-purple-400">Loading distribution…</div>
+                ) : (
+                  <div className="w-full">
+                    <PieChart data={mediaDist?.counts || {}} />
+                    <div className="mt-3 text-xs text-gray-400">
+                      Total assets: <span className="text-gray-200 font-semibold">{mediaDist?.total || 0}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}

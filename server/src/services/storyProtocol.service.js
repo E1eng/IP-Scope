@@ -1324,6 +1324,26 @@ const getAssetsStatusSummary = async (ownerAddress) => {
 };
 
 /**
+ * getMediaTypeDistribution(ownerAddress)
+ * Returns: { total, counts: { IMAGE, VIDEO, AUDIO, OTHER } }
+ */
+const getMediaTypeDistribution = async (ownerAddress) => {
+    if (!storyApiKey) throw new Error("STORY_PROTOCOL_API_KEY is not set");
+    if (!ownerAddress) return { total: 0, counts: { IMAGE: 0, VIDEO: 0, AUDIO: 0, OTHER: 0 } };
+    const assetsResp = await getAssetsByOwner(ownerAddress, 200, 0);
+    const assets = assetsResp.data || [];
+    const counts = { IMAGE: 0, VIDEO: 0, AUDIO: 0, OTHER: 0 };
+    for (const a of assets) {
+        const raw = String(a.mediaType || '').trim().toUpperCase();
+        if (raw === 'IMAGE') counts.IMAGE++;
+        else if (raw === 'VIDEO') counts.VIDEO++;
+        else if (raw === 'AUDIO') counts.AUDIO++;
+        else counts.OTHER++;
+    }
+    return { total: assets.length, counts };
+};
+
+/**
  * getTopLicensees(ipId)
  * - returns top 3 licensees by totalWei descending
  */
@@ -1372,6 +1392,7 @@ module.exports = {
     getAssetLeaderboard,
     getPortfolioLicensees,
     getAssetsStatusSummary,
+    getMediaTypeDistribution,
     // streaming/progress helpers
     startPortfolioAggregation,
     getProgress,

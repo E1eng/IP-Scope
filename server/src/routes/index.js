@@ -24,6 +24,7 @@ router.get('/stats/timeseries', assetController.getStatsTimeSeries);
 router.get('/stats/leaderboard/assets', assetController.getAssetLeaderboard);
 router.get('/stats/leaderboard/licensees', assetController.getLicenseeLeaderboard);
 router.get('/stats/assets-status', assetController.getAssetsStatus);
+router.get('/stats/media-distribution', assetController.getMediaDistribution);
 
 // Streaming/progress endpoints
 router.post('/stats/progress/start', async (req, res) => {

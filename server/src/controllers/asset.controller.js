@@ -188,6 +188,21 @@ const getAssetsStatus = async (req, res) => {
   }
 };
 
+/**
+ * GET /api/stats/media-distribution?ownerAddress=
+ */
+const getMediaDistribution = async (req, res) => {
+  try {
+    const owner = req.query.ownerAddress;
+    if (!owner) return res.status(400).json({ message: 'ownerAddress query param required' });
+    const result = await service.getMediaTypeDistribution(owner);
+    return res.json(result);
+  } catch (e) {
+    console.error('[CONTROLLER] getMediaDistribution error', e);
+    return res.status(500).json({ message: 'Internal server error', error: e.message });
+  }
+};
+
 module.exports = {
   searchAssets,
   getAssetDetails,
@@ -199,5 +214,6 @@ module.exports = {
   getStatsTimeSeries,
   getAssetLeaderboard,
   getLicenseeLeaderboard,
-  getAssetsStatus
+  getAssetsStatus,
+  getMediaDistribution
 };

@@ -4,7 +4,6 @@ import StatCard from '../components/StatCard';
 import AssetTable from '../components/AssetTable'; 
 import RemixDetailModal from '../components/RemixDetailModal';
 import { useSearch } from '../SearchContext'; 
-import TimeseriesChart from '../components/TimeseriesChart';
 import PieChart from '../components/PieChart';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
@@ -39,47 +38,12 @@ function ExplorerPage() {
   const hasFinalizedRef = useRef(false);
   const [disputeAlert, setDisputeAlert] = useState({ visible: false, activeCount: 0 });
   const lastActiveCountRef = useRef(0);
-  const [tsData, setTsData] = useState([]);
-  const [tsLoading, setTsLoading] = useState(false);
-  const [tsBucket, setTsBucket] = useState('daily');
-  const [tsDays, setTsDays] = useState(90);
-  const [tsMode, setTsMode] = useState('area'); // 'area' | 'candle'
   const [mediaDist, setMediaDist] = useState(null);
   const [mediaLoading, setMediaLoading] = useState(false);
+  const [statusCounts, setStatusCounts] = useState(null);
+  const [statusLoading, setStatusLoading] = useState(false);
 
-  const rollupDailyPoints = useCallback((dailyPoints, targetBucket) => {
-    if (!Array.isArray(dailyPoints) || dailyPoints.length === 0) return [];
-    // Parse daily date string like 'YYYY-MM-DD' to Date
-    const parseDaily = (s) => new Date(`${s}T00:00:00Z`);
-    const fmtMonth = (d) => `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
-    const weekKey = (d) => {
-      const tmp = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
-      tmp.setUTCDate(tmp.getUTCDate() + 4 - (tmp.getUTCDay() || 7));
-      const yearStart = new Date(Date.UTC(tmp.getUTCFullYear(), 0, 1));
-      const weekNo = Math.ceil((((tmp - yearStart) / 86400000) + 1) / 7);
-      return `${tmp.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`;
-    };
-    const groups = new Map();
-    for (const p of dailyPoints) {
-      const d = parseDaily(p.date || p.key);
-      if (Number.isNaN(d.getTime())) continue;
-      const val = Number(p.totalUsdt || 0);
-      if (!Number.isFinite(val) || val <= 0) continue;
-      const key = targetBucket === 'monthly' ? fmtMonth(d) : weekKey(d);
-      const arr = groups.get(key) || [];
-      arr.push({ t: d.getTime(), v: val });
-      groups.set(key, arr);
-    }
-    const rolled = Array.from(groups.entries()).map(([key, arr]) => {
-      arr.sort((a, b) => a.t - b.t);
-      let sum = 0, high = -Infinity, low = Infinity;
-      for (const it of arr) { sum += it.v; if (it.v > high) high = it.v; if (it.v < low) low = it.v; }
-      const open = arr[0].v;
-      const close = arr[arr.length - 1].v;
-      return { key, date: key, totalUsdt: Number(sum.toFixed(2)), ohlc: { open: Number(open.toFixed(2)), high: Number(high.toFixed(2)), low: Number(low.toFixed(2)), close: Number(close.toFixed(2)) } };
-    }).sort((a, b) => a.key.localeCompare(b.key));
-    return rolled;
-  }, []);
+  // timeseries removed
 
 
   // Efek untuk mengambil statistik dashboard (REAL)
@@ -149,26 +113,6 @@ function ExplorerPage() {
                 setProgress({ running: false, percent: 100, displayPartial: '$0.00 USDT' });
               }
             };
-
-            // Timeseries fetch (non-blocking)
-            try {
-              setTsLoading(true);
-              const tsParams = new URLSearchParams({ ownerAddress: addressForStats, bucket: tsBucket, days: String(tsDays) });
-              const tsResp = await axios.get(`${API_BASE_URL}/stats/timeseries?${tsParams.toString()}`);
-              let points = tsResp.data?.points || tsResp.data || [];
-              if ((!points || points.length === 0) && tsBucket !== 'daily') {
-                // Fallback: fetch daily then roll-up on client
-                const dailyParams = new URLSearchParams({ ownerAddress: addressForStats, bucket: 'daily', days: String(tsDays) });
-                const dailyResp = await axios.get(`${API_BASE_URL}/stats/timeseries?${dailyParams.toString()}`);
-                const dailyPts = dailyResp.data?.points || dailyResp.data || [];
-                points = rollupDailyPoints(dailyPts, tsBucket);
-              }
-              setTsData(points);
-            } catch (_) {
-              setTsData([]);
-            } finally {
-              setTsLoading(false);
-            }
 
             // Media distribution (non-blocking)
             try {
@@ -248,31 +192,7 @@ function ExplorerPage() {
     };
   }, [currentAddress, currentTokenContract, totalResults, updateSearchState, API_BASE_URL]);
 
-  // Refetch timeseries when bucket/days change and we have an address
-  useEffect(() => {
-    const addressForStats = currentAddress || currentTokenContract;
-    if (!addressForStats) { setTsData([]); return; }
-    const loadTs = async () => {
-      try {
-        setTsLoading(true);
-        const tsParams = new URLSearchParams({ ownerAddress: addressForStats, bucket: tsBucket, days: String(tsDays) });
-        const tsResp = await axios.get(`${API_BASE_URL}/stats/timeseries?${tsParams.toString()}`);
-        let points = tsResp.data?.points || tsResp.data || [];
-        if ((!points || points.length === 0) && tsBucket !== 'daily') {
-          const dailyParams = new URLSearchParams({ ownerAddress: addressForStats, bucket: 'daily', days: String(tsDays) });
-          const dailyResp = await axios.get(`${API_BASE_URL}/stats/timeseries?${dailyParams.toString()}`);
-          const dailyPts = dailyResp.data?.points || dailyResp.data || [];
-          points = rollupDailyPoints(dailyPts, tsBucket);
-        }
-        setTsData(points);
-      } catch (_) {
-        setTsData([]);
-      } finally {
-        setTsLoading(false);
-      }
-    };
-    loadTs();
-  }, [tsBucket, tsDays, currentAddress, currentTokenContract, API_BASE_URL, rollupDailyPoints]);
+  // timeseries removed
 
   // Finalize when progress done
   useEffect(() => {
@@ -314,7 +234,7 @@ function ExplorerPage() {
     finalize();
   }, [supportsProgress, progress.percent, progress.running, currentAddress, currentTokenContract, API_BASE_URL]);
 
-  // Instant alert: poll assets-status and notify when Active Dispute increases
+  // Instant alert: poll assets-status and notify when Active Dispute increases; also keep counts for distribution
   useEffect(() => {
     const addressForStats = currentAddress || currentTokenContract;
     if (!addressForStats) return;
@@ -322,21 +242,23 @@ function ExplorerPage() {
     const params = new URLSearchParams({ ownerAddress: addressForStats });
     const pollStatus = async () => {
       try {
+        if (!statusCounts) setStatusLoading(true);
         const resp = await axios.get(`${API_BASE_URL}/stats/assets-status?${params.toString()}`);
         const active = resp.data?.counts?.active || 0;
+        setStatusCounts(resp.data?.counts || null);
         if (active > lastActiveCountRef.current) {
           setDisputeAlert({ visible: true, activeCount: active });
         }
         lastActiveCountRef.current = active;
       } catch (_) {
         // ignore
-      }
+      } finally { setStatusLoading(false); }
     };
     // initial and interval
     pollStatus();
     timerId = setInterval(pollStatus, 30000);
     return () => { if (timerId) clearInterval(timerId); };
-  }, [currentAddress, currentTokenContract, API_BASE_URL]);
+  }, [currentAddress, currentTokenContract, API_BASE_URL, statusCounts]);
 
 
   // Helper untuk melakukan satu panggilan API (tetap sama)
@@ -573,60 +495,45 @@ function ExplorerPage() {
             </div>
         )}
         
-        {/* Timeseries + Distribution Analytics */}
+        {/* Portfolio Distributions */}
         {hasSearched && (
           <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-bold text-purple-300">Royalties Over Time</h3>
-              <div className="flex gap-2 items-center">
-                <select
-                  className="bg-gray-900 border border-gray-700 rounded px-2 py-1 text-sm"
-                  value={tsBucket}
-                  onChange={(e) => setTsBucket(e.target.value)}
-                >
-                  <option value="daily">Daily</option>
-                  <option value="weekly">Weekly</option>
-                  <option value="monthly">Monthly</option>
-                </select>
-                <select
-                  className="bg-gray-900 border border-gray-700 rounded px-2 py-1 text-sm"
-                  value={tsDays}
-                  onChange={(e) => setTsDays(parseInt(e.target.value, 10))}
-                >
-                  <option value={30}>30d</option>
-                  <option value={90}>90d</option>
-                  <option value={180}>180d</option>
-                  <option value={365}>365d</option>
-                </select>
-                <select
-                  className="bg-gray-900 border border-gray-700 rounded px-2 py-1 text-sm"
-                  value={tsMode}
-                  onChange={(e) => setTsMode(e.target.value)}
-                >
-                  <option value="area">Area</option>
-                  <option value="candle">Candlestick</option>
-                </select>
-              </div>
+              <h3 className="text-lg font-bold text-purple-300">Portfolio Distributions</h3>
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 w-full">
-              <div>
-                {tsLoading ? (
-                  <div className="text-center p-6 text-purple-400">Loading timeseries…</div>
-                ) : (
-                  <TimeseriesChart data={tsData} bucket={tsBucket} mode={tsMode} />
-                )}
-              </div>
               <div className="bg-gray-900/40 rounded-xl p-4 border border-gray-700">
                 <div className="flex items-center justify-between mb-3">
                   <h4 className="text-sm font-bold text-purple-300">Media Type Distribution</h4>
                 </div>
                 {mediaLoading ? (
-                  <div className="text-center p-6 text-purple-400">Loading distribution…</div>
+                  <div className="p-6">
+                    <div className="animate-pulse h-40 w-40 mx-auto rounded-full bg-gray-800" />
+                    <div className="mt-4 h-3 w-32 mx-auto bg-gray-800 rounded" />
+                  </div>
                 ) : (
                   <div className="w-full">
                     <PieChart data={mediaDist?.counts || {}} />
                     <div className="mt-3 text-xs text-gray-400">
                       Total assets: <span className="text-gray-200 font-semibold">{mediaDist?.total || 0}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div className="bg-gray-900/40 rounded-xl p-4 border border-gray-700">
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-sm font-bold text-purple-300">Dispute Status Distribution</h4>
+                </div>
+                {statusLoading ? (
+                  <div className="p-6">
+                    <div className="animate-pulse h-40 w-40 mx-auto rounded-full bg-gray-800" />
+                    <div className="mt-4 h-3 w-32 mx-auto bg-gray-800 rounded" />
+                  </div>
+                ) : (
+                  <div className="w-full">
+                    <PieChart data={statusCounts || {}} />
+                    <div className="mt-3 text-xs text-gray-400">
+                      Active: <span className="text-gray-200 font-semibold">{statusCounts?.active || 0}</span>, Resolved: <span className="text-gray-200 font-semibold">{statusCounts?.resolved || 0}</span>, Pending: <span className="text-gray-200 font-semibold">{statusCounts?.pending || 0}</span>, Clear: <span className="text-gray-200 font-semibold">{statusCounts?.clear || 0}</span>
                     </div>
                   </div>
                 )}

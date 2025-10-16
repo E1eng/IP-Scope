@@ -1155,7 +1155,7 @@ const getRoyaltyTransactions = async (ipId) => {
 
 /**
  * getPortfolioTimeSeries(ownerAddress, bucket = 'daily', days = 90)
- * Returns: { bucket: 'daily'|'weekly'|'monthly', points: [{ key, date, totalUsdt }] }
+ * Returns: { bucket: 'daily'|'weekly'|'monthly', points: [{ key, date, totalUsdt, ohlc?: { open, high, low, close } }] }
  */
 const getPortfolioTimeSeries = async (ownerAddress, bucket = 'daily', days = 90) => {
     if (!storyApiKey) throw new Error("STORY_PROTOCOL_API_KEY is not set");
@@ -1188,7 +1188,9 @@ const getPortfolioTimeSeries = async (ownerAddress, bucket = 'daily', days = 90)
         return `${tmp.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`;
     };
 
-    const bucketMap = new Map(); // key => Decimal USDT
+    // Accumulators per bucket
+    const bucketSumMap = new Map(); // key => Decimal USDT (sum of tx values)
+    const bucketTxListMap = new Map(); // key => Array<{ t: number, v: number }>
     for (const asset of assets) {
         const txs = await fetchRoyaltyTxDetailsForAsset(asset.ipId);
         for (const tx of txs) {
@@ -1197,13 +1199,41 @@ const getPortfolioTimeSeries = async (ownerAddress, bucket = 'daily', days = 90)
             const usdt = computeUsdtValue(tx.amount, tx.decimals || 18, tx.exchangeRateUsd || 0);
             if (usdt.lte(0)) continue;
             const key = toBucketKey(tsMs);
-            const existing = bucketMap.get(key) || new Decimal(0);
-            bucketMap.set(key, existing.add(usdt));
+            // sum
+            const existing = bucketSumMap.get(key) || new Decimal(0);
+            bucketSumMap.set(key, existing.add(usdt));
+            // list for OHLC
+            const arr = bucketTxListMap.get(key) || [];
+            // clamp to reasonable precision to avoid floating artifacts in UI
+            const numVal = Number(usdt.toFixed(6));
+            arr.push({ t: tsMs, v: numVal });
+            bucketTxListMap.set(key, arr);
         }
     }
 
-    const points = Array.from(bucketMap.entries())
-        .map(([key, dec]) => ({ key, date: key, totalUsdt: Number(dec.toFixed(2)) }))
+    const points = Array.from(bucketSumMap.entries())
+        .map(([key, dec]) => {
+            const list = bucketTxListMap.get(key) || [];
+            let ohlc = undefined;
+            if (list.length > 0) {
+                // sort chronologically
+                list.sort((a, b) => a.t - b.t);
+                let high = -Infinity, low = Infinity;
+                for (const it of list) {
+                    if (it.v > high) high = it.v;
+                    if (it.v < low) low = it.v;
+                }
+                const open = list[0].v;
+                const close = list[list.length - 1].v;
+                ohlc = {
+                    open: Number(open.toFixed ? open.toFixed(2) : Math.round(open * 100) / 100),
+                    high: Number(high.toFixed ? high.toFixed(2) : Math.round(high * 100) / 100),
+                    low: Number(low.toFixed ? low.toFixed(2) : Math.round(low * 100) / 100),
+                    close: Number(close.toFixed ? close.toFixed(2) : Math.round(close * 100) / 100)
+                };
+            }
+            return { key, date: key, totalUsdt: Number(dec.toFixed(2)), ohlc };
+        })
         .sort((a, b) => a.key.localeCompare(b.key));
     const result = { bucket: finalBucket, points };
     cache.timeseriesByOwnerKey.set(cacheKey, withTtl(result));

@@ -42,6 +42,7 @@ function ExplorerPage() {
   const [tsLoading, setTsLoading] = useState(false);
   const [tsBucket, setTsBucket] = useState('daily');
   const [tsDays, setTsDays] = useState(90);
+  const [tsMode, setTsMode] = useState('area'); // 'area' | 'candle'
 
 
   // Efek untuk mengambil statistik dashboard (REAL)
@@ -536,13 +537,21 @@ function ExplorerPage() {
                   <option value={180}>180d</option>
                   <option value={365}>365d</option>
                 </select>
+                <select
+                  className="bg-gray-900 border border-gray-700 rounded px-2 py-1 text-sm"
+                  value={tsMode}
+                  onChange={(e) => setTsMode(e.target.value)}
+                >
+                  <option value="area">Area</option>
+                  <option value="candle">Candlestick</option>
+                </select>
               </div>
             </div>
             <div className="w-full">
               {tsLoading ? (
                 <div className="text-center p-6 text-purple-400">Loading timeseries…</div>
               ) : (
-                <TimeseriesChart data={tsData} bucket={tsBucket} />
+                <TimeseriesChart data={tsData} bucket={tsBucket} mode={tsMode} />
               )}
             </div>
           </div>

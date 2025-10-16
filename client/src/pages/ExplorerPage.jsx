@@ -4,6 +4,7 @@ import StatCard from '../components/StatCard';
 import AssetTable from '../components/AssetTable'; 
 import RemixDetailModal from '../components/RemixDetailModal';
 import { useSearch } from '../SearchContext'; 
+import TimeseriesChart from '../components/TimeseriesChart';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 const PAGE_LIMIT = 20;
@@ -37,6 +38,10 @@ function ExplorerPage() {
   const hasFinalizedRef = useRef(false);
   const [disputeAlert, setDisputeAlert] = useState({ visible: false, activeCount: 0 });
   const lastActiveCountRef = useRef(0);
+  const [tsData, setTsData] = useState([]);
+  const [tsLoading, setTsLoading] = useState(false);
+  const [tsBucket, setTsBucket] = useState('daily');
+  const [tsDays, setTsDays] = useState(90);
 
 
   // Efek untuk mengambil statistik dashboard (REAL)
@@ -107,6 +112,19 @@ function ExplorerPage() {
               }
             };
 
+            // Timeseries fetch (non-blocking)
+            try {
+              setTsLoading(true);
+              const tsParams = new URLSearchParams({ ownerAddress: addressForStats, bucket: tsBucket, days: String(tsDays) });
+              const tsResp = await axios.get(`${API_BASE_URL}/stats/timeseries?${tsParams.toString()}`);
+              const points = tsResp.data?.points || tsResp.data || [];
+              setTsData(points);
+            } catch (_) {
+              setTsData([]);
+            } finally {
+              setTsLoading(false);
+            }
+
             // Try to start async aggregation (if supported by backend)
             let canUseProgress = true;
             try {
@@ -173,6 +191,26 @@ function ExplorerPage() {
       }
     };
   }, [currentAddress, currentTokenContract, totalResults, updateSearchState, API_BASE_URL]);
+
+  // Refetch timeseries when bucket/days change and we have an address
+  useEffect(() => {
+    const addressForStats = currentAddress || currentTokenContract;
+    if (!addressForStats) { setTsData([]); return; }
+    const loadTs = async () => {
+      try {
+        setTsLoading(true);
+        const tsParams = new URLSearchParams({ ownerAddress: addressForStats, bucket: tsBucket, days: String(tsDays) });
+        const tsResp = await axios.get(`${API_BASE_URL}/stats/timeseries?${tsParams.toString()}`);
+        const points = tsResp.data?.points || tsResp.data || [];
+        setTsData(points);
+      } catch (_) {
+        setTsData([]);
+      } finally {
+        setTsLoading(false);
+      }
+    };
+    loadTs();
+  }, [tsBucket, tsDays, currentAddress, currentTokenContract, API_BASE_URL]);
 
   // Finalize when progress done
   useEffect(() => {
@@ -454,7 +492,7 @@ function ExplorerPage() {
 
         {/* Header Dashboard Stats */}
         {hasSearched && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-10">
                 <StatCard title="Total Royalties Collected" value={(supportsProgress && progress.running) ? (progress.displayPartial || stats.totalRoyalties) : stats.totalRoyalties} icon="royalty" isLoading={statsLoading} progressPercent={(supportsProgress && progress.running) ? progress.percent : null} tooltip={stats.breakdownByToken ? stats.breakdownByToken.map(b=>`${b.symbol}: ${b.amountFormatted} (~$${(b.usdtValue||0).toLocaleString()})`).join(' \n') : null} />
                 <StatCard title="Total IP Assets Found" value={stats.totalAssets.toLocaleString()} icon="asset" /> 
                 <StatCard 
@@ -463,9 +501,53 @@ function ExplorerPage() {
                     icon="license" 
                     isWarning={stats.overallDisputeStatus === 'Active'} 
                 />
+                <StatCard
+                  title="StoryScan Activity"
+                  value={counters ? `${Number(counters.transactions_count||0).toLocaleString()} txs` : 'N/A'}
+                  icon="volume"
+                  isLoading={statsLoading && !counters}
+                  tooltip={counters ? `Transfers: ${Number(counters.token_transfers_count||0).toLocaleString()}\nValidations: ${Number(counters.validations_count||0).toLocaleString()}` : 'No counters available'}
+                />
             </div>
         )}
         
+        {/* Timeseries Analytics */}
+        {hasSearched && (
+          <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-purple-300">Royalties Over Time</h3>
+              <div className="flex gap-2 items-center">
+                <select
+                  className="bg-gray-900 border border-gray-700 rounded px-2 py-1 text-sm"
+                  value={tsBucket}
+                  onChange={(e) => setTsBucket(e.target.value)}
+                >
+                  <option value="daily">Daily</option>
+                  <option value="weekly">Weekly</option>
+                  <option value="monthly">Monthly</option>
+                </select>
+                <select
+                  className="bg-gray-900 border border-gray-700 rounded px-2 py-1 text-sm"
+                  value={tsDays}
+                  onChange={(e) => setTsDays(parseInt(e.target.value, 10))}
+                >
+                  <option value={30}>30d</option>
+                  <option value={90}>90d</option>
+                  <option value={180}>180d</option>
+                  <option value={365}>365d</option>
+                </select>
+              </div>
+            </div>
+            <div className="w-full">
+              {tsLoading ? (
+                <div className="text-center p-6 text-purple-400">Loading timeseries…</div>
+              ) : (
+                <TimeseriesChart data={tsData} bucket={tsBucket} />
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Results Area (Asset Table) */}
         {hasSearched && (
             <div className="space-y-6">

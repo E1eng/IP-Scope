@@ -75,10 +75,46 @@ function AssetTable({ assets, isLoading, error, onAssetClick, royaltyTotalsMap, 
         }
     };
     if (isLoading) {
+        // Skeleton loading state for table
+        const skeletonRows = Array.from({ length: 6 });
         return (
-            <div className="text-center p-12 text-purple-400 flex flex-col items-center">
-                <div className="animate-spin h-8 w-8 mb-4 border-4 border-purple-400 border-t-transparent rounded-full"></div>
-                <p>Loading Assets...</p>
+            <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+                <table className="w-full text-left">
+                    <thead className="bg-gray-900/50">
+                        <tr>
+                            <th className="p-4">Preview</th>
+                            <th className="p-4">Asset Title</th>
+                            <th className="p-4">Media Type</th>
+                            <th className="p-4">Date Created</th>
+                            <th className="p-4">Total Royalty Claimed</th>
+                            <th className="p-4">Dispute Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {skeletonRows.map((_, idx) => (
+                            <tr key={idx} className="border-t border-gray-700">
+                                <td className="p-2 w-16">
+                                    <div className="w-12 h-12 bg-gray-700 rounded-lg animate-pulse" />
+                                </td>
+                                <td className="p-4">
+                                    <div className="h-4 bg-gray-700 rounded w-48 animate-pulse" />
+                                </td>
+                                <td className="p-4">
+                                    <div className="h-4 bg-gray-700 rounded w-24 animate-pulse" />
+                                </td>
+                                <td className="p-4">
+                                    <div className="h-4 bg-gray-700 rounded w-28 animate-pulse" />
+                                </td>
+                                <td className="p-4">
+                                    <div className="h-4 bg-gray-700 rounded w-36 animate-pulse" />
+                                </td>
+                                <td className="p-4">
+                                    <div className="h-5 bg-gray-700 rounded-full w-20 animate-pulse" />
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
             </div>
         );
     }

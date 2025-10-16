@@ -562,6 +562,31 @@ const mapWithRpsLimit = async (items, rps, mapper) => {
 };
 
 /**
+ * mapWithConcurrency
+ * Run mapper over items with fixed max concurrency
+ */
+const mapWithConcurrency = async (items, concurrency, mapper) => {
+    const max = Math.max(1, parseInt(concurrency, 10) || 4);
+    const results = new Array(items.length);
+    let index = 0;
+    const workers = Array.from({ length: max }).map(async () => {
+        // eslint-disable-next-line no-constant-condition
+        while (true) {
+            const current = index++;
+            if (current >= items.length) break;
+            try {
+                // eslint-disable-next-line no-await-in-loop
+                results[current] = await mapper(items[current], current);
+            } catch (e) {
+                results[current] = null;
+            }
+        }
+    });
+    await Promise.all(workers);
+    return results.filter(x => x !== undefined && x !== null);
+};
+
+/**
  * Fetch all RoyaltyPaid events for an ipId with pagination (loop until exhausted) and lowercase fallback
  */
 const fetchRoyaltyEventsPaginated = async (ipId, pageSize = 200) => {
@@ -766,7 +791,7 @@ const detectMediaTypeFromIpfs = async (uri) => {
     return null;
 };
 
-const getAssetsByOwner = async (ownerAddress, limit = 20, offset = 0, tokenContract) => {
+const getAssetsByOwner = async (ownerAddress, limit = 20, offset = 0, tokenContract, skipEnrich = false) => {
     if (!storyApiKey) {
         throw new Error("STORY_PROTOCOL_API_KEY is not set in environment variables.");
     }
@@ -845,46 +870,48 @@ const getAssetsByOwner = async (ownerAddress, limit = 20, offset = 0, tokenContr
         // If degraded empty due to timeout/5xx, do not treat as definitive not-found
         const wasDegraded = !!resp.__degraded;
 
-        // Enrich disputes status and mediaType via IPFS
+        // Enrich disputes status and mediaType via IPFS (optional)
         data = data || [];
-        try {
-            const dispReq = {
-                where: { ipIds: data.map(a => a.ipId).filter(Boolean) },
-                pagination: { limit: data.length || 50 }
-            };
-            const dispResp = await fetchStoryApi(STORY_DISPUTES_API_BASE_URL, storyApiKey, dispReq, 'POST');
-            const dispItems = dispResp.data || dispResp.disputes || [];
-            const ipToStatus = new Map();
-            for (const d of dispItems) {
-                const ip = d?.ipId || d?.ip_id;
-                const status = d?.status || d?.state || 'Active';
-                if (ip) ipToStatus.set(ip, status);
-            }
-            for (const a of data) {
-                if (ipToStatus.has(a.ipId)) a.disputeStatus = ipToStatus.get(a.ipId);
-                if (!a.disputeStatus || a.disputeStatus === 'None') {
-                    try {
-                        const fb = await getDisputeStatusFromTransactions(a.ipId);
-                        if (fb) a.disputeStatus = fb;
-                    } catch {}
+        if (!skipEnrich) {
+            try {
+                const dispReq = {
+                    where: { ipIds: data.map(a => a.ipId).filter(Boolean) },
+                    pagination: { limit: data.length || 50 }
+                };
+                const dispResp = await fetchStoryApi(STORY_DISPUTES_API_BASE_URL, storyApiKey, dispReq, 'POST');
+                const dispItems = dispResp.data || dispResp.disputes || [];
+                const ipToStatus = new Map();
+                for (const d of dispItems) {
+                    const ip = d?.ipId || d?.ip_id;
+                    const status = d?.status || d?.state || 'Active';
+                    if (ip) ipToStatus.set(ip, status);
                 }
-                // If mediaType missing or UNKNOWN, try detect via nftMetadata.uri (ipfs)
-                const currentMedia = (a.mediaType || '').toUpperCase();
-                const uri = a?.nftMetadata?.image?.cachedUrl || a?.nftMetadata?.raw?.metadata?.image || a?.nftMetadata?.image?.originalUrl || a?.nftMetadata?.uri;
-                if ((!currentMedia || currentMedia === 'UNKNOWN') && uri) {
-                    try {
-                        const ct = await detectMediaTypeFromIpfs(uri);
-                        if (ct) {
-                            if (ct.startsWith('image/')) a.mediaType = 'IMAGE';
-                            else if (ct.startsWith('video/')) a.mediaType = 'VIDEO';
-                            else if (ct.startsWith('audio/')) a.mediaType = 'AUDIO';
-                            else a.mediaType = ct.toUpperCase();
-                        }
-                    } catch {}
+                for (const a of data) {
+                    if (ipToStatus.has(a.ipId)) a.disputeStatus = ipToStatus.get(a.ipId);
+                    if (!a.disputeStatus || a.disputeStatus === 'None') {
+                        try {
+                            const fb = await getDisputeStatusFromTransactions(a.ipId);
+                            if (fb) a.disputeStatus = fb;
+                        } catch {}
+                    }
+                    // If mediaType missing or UNKNOWN, try detect via nftMetadata.uri (ipfs)
+                    const currentMedia = (a.mediaType || '').toUpperCase();
+                    const uri = a?.nftMetadata?.image?.cachedUrl || a?.nftMetadata?.raw?.metadata?.image || a?.nftMetadata?.image?.originalUrl || a?.nftMetadata?.uri;
+                    if ((!currentMedia || currentMedia === 'UNKNOWN') && uri) {
+                        try {
+                            const ct = await detectMediaTypeFromIpfs(uri);
+                            if (ct) {
+                                if (ct.startsWith('image/')) a.mediaType = 'IMAGE';
+                                else if (ct.startsWith('video/')) a.mediaType = 'VIDEO';
+                                else if (ct.startsWith('audio/')) a.mediaType = 'AUDIO';
+                                else a.mediaType = ct.toUpperCase();
+                            }
+                        } catch {}
+                    }
                 }
+            } catch (e) {
+                // ignore disputes enrich failure
             }
-        } catch (e) {
-            // ignore disputes enrich failure
         }
 
         const result = { ...resp, data, __degraded: wasDegraded };
@@ -1170,7 +1197,7 @@ const getPortfolioTimeSeries = async (ownerAddress, bucket = 'daily', days = 90)
     const cached = cache.timeseriesByOwnerKey.get(cacheKey);
     if (isFresh(cached)) return cached.value;
 
-    const assetsResp = await getAssetsByOwner(ownerAddress, 200, 0);
+    const assetsResp = await getAssetsByOwner(ownerAddress, 200, 0, undefined, true);
     const assets = assetsResp.data || [];
     if (assets.length === 0) return { bucket: finalBucket, points: [] };
 
@@ -1191,8 +1218,17 @@ const getPortfolioTimeSeries = async (ownerAddress, bucket = 'daily', days = 90)
     // Accumulators per bucket
     const bucketSumMap = new Map(); // key => Decimal USDT (sum of tx values)
     const bucketTxListMap = new Map(); // key => Array<{ t: number, v: number }>
-    for (const asset of assets) {
-        const txs = await fetchRoyaltyTxDetailsForAsset(asset.ipId);
+    // Fetch per-asset transactions concurrently (bounded)
+    const CONCURRENCY = parseInt(process.env.TIMESERIES_CONCURRENCY || '4', 10);
+    const perAsset = await mapWithConcurrency(assets, CONCURRENCY, async (asset) => {
+        try {
+            const txs = await fetchRoyaltyTxDetailsForAsset(asset.ipId);
+            return { asset, txs };
+        } catch {
+            return { asset, txs: [] };
+        }
+    });
+    for (const { txs } of perAsset) {
         for (const tx of txs) {
             const tsMs = (tx.timestampSec || 0) * 1000;
             if (tsMs < sinceEpochMs) continue;

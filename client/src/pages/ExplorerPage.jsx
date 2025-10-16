@@ -44,6 +44,40 @@ function ExplorerPage() {
   const [tsDays, setTsDays] = useState(90);
   const [tsMode, setTsMode] = useState('area'); // 'area' | 'candle'
 
+  const rollupDailyPoints = useCallback((dailyPoints, targetBucket) => {
+    if (!Array.isArray(dailyPoints) || dailyPoints.length === 0) return [];
+    // Parse daily date string like 'YYYY-MM-DD' to Date
+    const parseDaily = (s) => new Date(`${s}T00:00:00Z`);
+    const fmtMonth = (d) => `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+    const weekKey = (d) => {
+      const tmp = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+      tmp.setUTCDate(tmp.getUTCDate() + 4 - (tmp.getUTCDay() || 7));
+      const yearStart = new Date(Date.UTC(tmp.getUTCFullYear(), 0, 1));
+      const weekNo = Math.ceil((((tmp - yearStart) / 86400000) + 1) / 7);
+      return `${tmp.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`;
+    };
+    const groups = new Map();
+    for (const p of dailyPoints) {
+      const d = parseDaily(p.date || p.key);
+      if (Number.isNaN(d.getTime())) continue;
+      const val = Number(p.totalUsdt || 0);
+      if (!Number.isFinite(val) || val <= 0) continue;
+      const key = targetBucket === 'monthly' ? fmtMonth(d) : weekKey(d);
+      const arr = groups.get(key) || [];
+      arr.push({ t: d.getTime(), v: val });
+      groups.set(key, arr);
+    }
+    const rolled = Array.from(groups.entries()).map(([key, arr]) => {
+      arr.sort((a, b) => a.t - b.t);
+      let sum = 0, high = -Infinity, low = Infinity;
+      for (const it of arr) { sum += it.v; if (it.v > high) high = it.v; if (it.v < low) low = it.v; }
+      const open = arr[0].v;
+      const close = arr[arr.length - 1].v;
+      return { key, date: key, totalUsdt: Number(sum.toFixed(2)), ohlc: { open: Number(open.toFixed(2)), high: Number(high.toFixed(2)), low: Number(low.toFixed(2)), close: Number(close.toFixed(2)) } };
+    }).sort((a, b) => a.key.localeCompare(b.key));
+    return rolled;
+  }, []);
+
 
   // Efek untuk mengambil statistik dashboard (REAL)
   const progressIntervalRef = useRef(null);
@@ -118,7 +152,14 @@ function ExplorerPage() {
               setTsLoading(true);
               const tsParams = new URLSearchParams({ ownerAddress: addressForStats, bucket: tsBucket, days: String(tsDays) });
               const tsResp = await axios.get(`${API_BASE_URL}/stats/timeseries?${tsParams.toString()}`);
-              const points = tsResp.data?.points || tsResp.data || [];
+              let points = tsResp.data?.points || tsResp.data || [];
+              if ((!points || points.length === 0) && tsBucket !== 'daily') {
+                // Fallback: fetch daily then roll-up on client
+                const dailyParams = new URLSearchParams({ ownerAddress: addressForStats, bucket: 'daily', days: String(tsDays) });
+                const dailyResp = await axios.get(`${API_BASE_URL}/stats/timeseries?${dailyParams.toString()}`);
+                const dailyPts = dailyResp.data?.points || dailyResp.data || [];
+                points = rollupDailyPoints(dailyPts, tsBucket);
+              }
               setTsData(points);
             } catch (_) {
               setTsData([]);
@@ -202,7 +243,13 @@ function ExplorerPage() {
         setTsLoading(true);
         const tsParams = new URLSearchParams({ ownerAddress: addressForStats, bucket: tsBucket, days: String(tsDays) });
         const tsResp = await axios.get(`${API_BASE_URL}/stats/timeseries?${tsParams.toString()}`);
-        const points = tsResp.data?.points || tsResp.data || [];
+        let points = tsResp.data?.points || tsResp.data || [];
+        if ((!points || points.length === 0) && tsBucket !== 'daily') {
+          const dailyParams = new URLSearchParams({ ownerAddress: addressForStats, bucket: 'daily', days: String(tsDays) });
+          const dailyResp = await axios.get(`${API_BASE_URL}/stats/timeseries?${dailyParams.toString()}`);
+          const dailyPts = dailyResp.data?.points || dailyResp.data || [];
+          points = rollupDailyPoints(dailyPts, tsBucket);
+        }
         setTsData(points);
       } catch (_) {
         setTsData([]);
@@ -211,7 +258,7 @@ function ExplorerPage() {
       }
     };
     loadTs();
-  }, [tsBucket, tsDays, currentAddress, currentTokenContract, API_BASE_URL]);
+  }, [tsBucket, tsDays, currentAddress, currentTokenContract, API_BASE_URL, rollupDailyPoints]);
 
   // Finalize when progress done
   useEffect(() => {

@@ -32,7 +32,7 @@ const ErrorState = ({ message }) => (
     </div>
 );
 
-function StatCard({ title, value, isWarning = false, icon, isLoading = false, error = null, tooltip = null }) {
+function StatCard({ title, value, isWarning = false, icon, isLoading = false, error = null, tooltip = null, progressPercent = null }) {
     // Determine if value indicates an error state
     const isError = error || value === 'Error' || value === 'N/A';
     
@@ -64,6 +64,15 @@ function StatCard({ title, value, isWarning = false, icon, isLoading = false, er
                         </p>
                         {isError && value === 'N/A' && (
                             <p className="text-xs text-gray-500 mt-1">No data available yet</p>
+                        )}
+                        {/* Optional progress bar */}
+                        {typeof progressPercent === 'number' && progressPercent >= 0 && progressPercent < 100 && (
+                            <div className="mt-3">
+                                <div className="h-2 bg-gray-700 rounded">
+                                    <div className="h-2 bg-purple-500 rounded" style={{ width: `${progressPercent}%` }} />
+                                </div>
+                                <p className="text-xs text-gray-400 mt-1">{progressPercent}%</p>
+                            </div>
                         )}
                     </>
                 )}

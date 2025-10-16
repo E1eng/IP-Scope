@@ -65,7 +65,15 @@ const WalletFilterForm = ({ onFetch, initialOwnerAddress, isSubmitting }) => {
 };
 
 // --- Komponen Utama: AssetTable ---
-function AssetTable({ assets, isLoading, error, onAssetClick }) {
+function AssetTable({ assets, isLoading, error, onAssetClick, royaltyTotalsMap, isRoyaltyTotalsLoading }) {
+    const formatUsdt = (num) => {
+        if (num === null || num === undefined || isNaN(num)) return '-';
+        try {
+            return `$${Number(num).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDT`;
+        } catch {
+            return '-';
+        }
+    };
     if (isLoading) {
         return (
             <div className="text-center p-12 text-purple-400 flex flex-col items-center">
@@ -101,6 +109,7 @@ function AssetTable({ assets, isLoading, error, onAssetClick }) {
                         <th className="p-4">Asset Title</th>
                         <th className="p-4">Media Type</th>
                         <th className="p-4">Date Created</th>
+                        <th className="p-4">Total Royalty Claimed</th>
                         <th className="p-4">Dispute Status</th>
                     </tr>
                 </thead>
@@ -127,6 +136,11 @@ function AssetTable({ assets, isLoading, error, onAssetClick }) {
                             <td className="p-4 font-semibold">{asset.title}</td>
                             <td className="p-4 text-gray-300">{asset.mediaType}</td>
                             <td className="p-4 text-gray-300">{new Date(asset.createdAt).toLocaleDateString()}</td>
+                            <td className="p-4 font-semibold text-green-300">
+                                {royaltyTotalsMap && royaltyTotalsMap.hasOwnProperty(asset.ipId)
+                                  ? formatUsdt(royaltyTotalsMap[asset.ipId])
+                                  : (isRoyaltyTotalsLoading ? 'Loading…' : '-')}
+                            </td>
                             {/* Dispute Status Cell */}
                             <td className="p-4">
                                 <span className={`text-xs font-bold px-2 py-1 rounded-full 

@@ -14,6 +14,10 @@ const searchAssets = async (req, res) => {
 
     // service.getAssetsByOwner returns { data: [], pagination: {} }
     const result = await service.getAssetsByOwner(owner, limit, offset, tokenContract);
+    // Soft-fail: if backend degraded due to timeout, return 202 Accepted-like hint
+    if (result.__degraded) {
+      return res.status(202).json({ data: result.data || [], pagination: result.pagination || { total: 0, limit, offset }, degraded: true });
+    }
     // Ensure pagination shape
     const pagination = result.pagination || { total: (result.data || []).length, limit, offset };
     return res.json({ data: result.data || [], pagination });
@@ -51,8 +55,15 @@ const getAssetTransactions = async (req, res) => {
     const ipId = req.params.ipId;
     if (!ipId) return res.status(400).json({ message: 'ipId required' });
 
+  try {
     const list = await service.getRoyaltyTransactions(ipId);
-    return res.json({ count: list.length, data: list });
+    // Always return array; never 500 so modal doesn't break
+    return res.json(Array.isArray(list) ? list : []);
+  } catch (e) {
+    console.error('[CONTROLLER] getAssetTransactions fatal', e);
+    // Graceful fallback: return empty array for the modal
+    return res.json([]);
+  }
   } catch (e) {
     console.error('[CONTROLLER] getAssetTransactions error', e);
     return res.status(500).json({ message: 'Internal server error', error: e.message });
@@ -68,8 +79,9 @@ const getTopLicensees = async (req, res) => {
     const ipId = req.params.ipId;
     if (!ipId) return res.status(400).json({ message: 'ipId required' });
 
-    const top = await service.getTopLicensees(ipId);
-    return res.json({ count: top.length, data: top });
+  const top = await service.getTopLicensees(ipId);
+  // Return array directly for frontend compatibility
+  return res.json(top);
   } catch (e) {
     console.error('[CONTROLLER] getTopLicensees error', e);
     return res.status(500).json({ message: 'Internal server error', error: e.message });
@@ -111,11 +123,81 @@ const getPortfolioStats = async (req, res) => {
   }
 };
 
+/**
+ * GET /api/stats/timeseries?ownerAddress=&bucket=&days=
+ * Returns: { bucket, points: [{ key, date, totalUsdt }] }
+ */
+const getStatsTimeSeries = async (req, res) => {
+  try {
+    const owner = req.query.ownerAddress;
+    const bucket = req.query.bucket || 'daily';
+    const days = req.query.days ? parseInt(req.query.days, 10) : 90;
+    if (!owner) return res.status(400).json({ message: 'ownerAddress query param required' });
+    const result = await service.getPortfolioTimeSeries(owner, bucket, days);
+    return res.json(result);
+  } catch (e) {
+    console.error('[CONTROLLER] getStatsTimeSeries error', e);
+    return res.status(500).json({ message: 'Internal server error', error: e.message });
+  }
+};
+
+/**
+ * GET /api/stats/leaderboard/assets?ownerAddress=&limit=
+ */
+const getAssetLeaderboard = async (req, res) => {
+  try {
+    const owner = req.query.ownerAddress;
+    const limit = req.query.limit ? parseInt(req.query.limit, 10) : 10;
+    if (!owner) return res.status(400).json({ message: 'ownerAddress query param required' });
+    const rows = await service.getAssetLeaderboard(owner, limit);
+    return res.json({ count: rows.length, data: rows });
+  } catch (e) {
+    console.error('[CONTROLLER] getAssetLeaderboard error', e);
+    return res.status(500).json({ message: 'Internal server error', error: e.message });
+  }
+};
+
+/**
+ * GET /api/stats/leaderboard/licensees?ownerAddress=&limit=
+ */
+const getLicenseeLeaderboard = async (req, res) => {
+  try {
+    const owner = req.query.ownerAddress;
+    const limit = req.query.limit ? parseInt(req.query.limit, 10) : 10;
+    if (!owner) return res.status(400).json({ message: 'ownerAddress query param required' });
+    const rows = await service.getPortfolioLicensees(owner, limit);
+    return res.json({ count: rows.length, data: rows });
+  } catch (e) {
+    console.error('[CONTROLLER] getLicenseeLeaderboard error', e);
+    return res.status(500).json({ message: 'Internal server error', error: e.message });
+  }
+};
+
+/**
+ * GET /api/stats/assets-status?ownerAddress=
+ */
+const getAssetsStatus = async (req, res) => {
+  try {
+    const owner = req.query.ownerAddress;
+    if (!owner) return res.status(400).json({ message: 'ownerAddress query param required' });
+    const result = await service.getAssetsStatusSummary(owner);
+    return res.json(result);
+  } catch (e) {
+    console.error('[CONTROLLER] getAssetsStatus error', e);
+    return res.status(500).json({ message: 'Internal server error', error: e.message });
+  }
+};
+
 module.exports = {
   searchAssets,
   getAssetDetails,
   getAssetTransactions,
   getTopLicensees,
   getStats,
-  getPortfolioStats
+  getPortfolioStats,
+  // progress endpoints are added at router level
+  getStatsTimeSeries,
+  getAssetLeaderboard,
+  getLicenseeLeaderboard,
+  getAssetsStatus
 };

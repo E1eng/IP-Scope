@@ -6,14 +6,28 @@ import { Link } from 'react-router-dom';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
-// Komponen untuk menampilkan panel analitik on-chain
-const AnalyticsPanel = ({ asset }) => {
-    const analytics = asset?.analytics;
-
-    // Tampilkan pesan loading jika data analitik belum ada
-    if (!analytics) {
-        return <div className="p-4 text-center text-purple-400">Loading analytics...</div>;
+// Helper untuk konversi URL gambar (mirip dengan card di tabel)
+const getImageUrl = (asset) => {
+    let url = asset?.nftMetadata?.image?.cachedUrl ||
+              asset?.nftMetadata?.raw?.metadata?.image ||
+              asset?.nftMetadata?.image?.originalUrl ||
+              asset?.nftMetadata?.uri;
+    if (typeof url === 'string') {
+        if (url.startsWith('ipfs://')) return url.replace('ipfs://', 'https://ipfs.io/ipfs/');
+        return url.trim();
     }
+    return '/favicon.png';
+};
+
+// Komponen untuk menampilkan panel analitik on-chain
+const AnalyticsPanel = ({ asset, loading }) => {
+    const analytics = asset?.analytics;
+    if (loading) return <div className="p-4 text-center text-purple-400">Loading analytics...</div>;
+    if (!analytics) return (
+        <div className="bg-gray-800/50 p-4 rounded-lg border border-gray-700 text-center text-gray-400">
+            No analytics available.
+        </div>
+    );
     // Tampilkan pesan error jika terjadi kesalahan saat mengambil analitik
     if (analytics.errorMessage) {
         return (
@@ -61,8 +75,14 @@ const RoyaltyLedgerTab = ({ ipId }) => {
             setIsLoading(true);
             setError(null);
             try {
-                const response = await axios.get(`${API_BASE_URL}/assets/${ipId}/royalty-transactions`);
-                setTransactions(response.data || []);
+                try {
+                    const response = await axios.get(`${API_BASE_URL}/assets/${ipId}/royalty-transactions`);
+                    setTransactions(response.data || []);
+                } catch (errPrimary) {
+                    // Fallback ke alias lama jika tersedia
+                    const response2 = await axios.get(`${API_BASE_URL}/assets/${ipId}/transactions`);
+                    setTransactions(response2.data || []);
+                }
             } catch (err) {
                 const errorMessage = err.response?.data?.message || "Failed to load royalty ledger.";
                 setError(errorMessage);
@@ -143,7 +163,7 @@ const TopLicenseesTab = ({ ipId }) => {
                         </p>
                     </div>
                     <div className="text-right">
-                        <p className="font-bold text-sm text-green-400">{lic.totalValue}</p>
+                        <p className="font-bold text-sm text-green-400">{lic.totalValue || lic.totalValueFormatted}</p>
                         <p className="text-gray-500 mt-0.5">{lic.count} payments</p>
                     </div>
                 </div>
@@ -155,17 +175,36 @@ const TopLicenseesTab = ({ ipId }) => {
 // Komponen Utama KONTEN (Bukan Modal Sebenarnya Lagi)
 const RemixDetailModalContent = ({ asset, onClose, isLoading }) => {
   const [activeTab, setActiveTab] = useState('details');
+  const [detail, setDetail] = useState(asset);
+  const [analyticsLoading, setAnalyticsLoading] = useState(true);
 
   useEffect(() => {
     setActiveTab('details');
   }, [asset?.ipId]);
 
-  // Kami menganggap AssetDetailPage sudah menangani loading/error di level atas.
-  
- 
-  const formattedDate = asset.createdAt ? new Date(asset.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Not Provided';
-  const creatorName = asset.nftMetadata?.raw?.metadata?.creators?.[0]?.name || 'Not Provided';
-  const mediaTypeDisplay = asset.mediaType === 'UNKNOWN' ? 'Not Specified' : asset.mediaType;
+  // Fetch detail + analytics saat modal dibuka
+  useEffect(() => {
+    let cancelled = false;
+    setDetail(asset);
+    setAnalyticsLoading(true);
+    const load = async () => {
+      try {
+        if (!asset?.ipId) return;
+        const resp = await axios.get(`${API_BASE_URL}/assets/${asset.ipId}`);
+        if (!cancelled) setDetail(resp.data || asset);
+      } catch (_) {
+        // keep minimal detail
+      } finally {
+        if (!cancelled) setAnalyticsLoading(false);
+      }
+    };
+    load();
+    return () => { cancelled = true; };
+  }, [asset?.ipId]);
+
+  const formattedDate = detail?.createdAt ? new Date(detail.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Not Provided';
+  const creatorName = detail?.nftMetadata?.raw?.metadata?.creators?.[0]?.name || 'Not Provided';
+  const mediaTypeDisplay = detail?.mediaType === 'UNKNOWN' ? 'Not Specified' : (detail?.mediaType || 'Not Specified');
   // UI/UX: Rombak tampilan agar sesuai untuk halaman penuh.
 return (
     <div 
@@ -180,7 +219,17 @@ return (
       >
         <header className="p-6 flex-shrink-0 border-b border-purple-900/50">
             <div className="flex justify-between items-start">
-                <h2 className="text-2xl font-bold text-white tracking-tight line-clamp-2 pr-10">{asset.title || 'Untitled Asset'}</h2>
+                <div className="flex items-center gap-4 pr-10">
+                  <div className="w-14 h-14 rounded-lg overflow-hidden border border-gray-700 flex-shrink-0">
+                    <img
+                      src={getImageUrl(detail)}
+                      alt="Asset Preview"
+                      className="w-full h-full object-cover"
+                      onError={(e) => { e.target.onerror = null; e.target.src = '/favicon.png'; }}
+                    />
+                  </div>
+                  <h2 className="text-2xl font-bold text-white tracking-tight line-clamp-2">{detail?.title || 'Untitled Asset'}</h2>
+                </div>
                 <button 
                     onClick={onClose} 
                     className="text-gray-400 hover:text-red-400 p-2 rounded-full transition-colors bg-gray-800"
@@ -200,24 +249,24 @@ return (
             <div className="pt-6">
                 {activeTab === 'details' && (
                     <div className="space-y-6">
-                        <AnalyticsPanel asset={asset} />
-                        <LicenseCard asset={asset} />
+                        <AnalyticsPanel asset={detail} loading={analyticsLoading} />
+                        <LicenseCard asset={detail} />
                         <div className="space-y-1 pt-4 border-t border-gray-700 text-sm">
                             <h3 className="font-semibold text-purple-300 mb-2">Key Details</h3>
-                            <DetailRow label="IP ID" value={asset.ipId} />
+                            <DetailRow label="IP ID" value={detail?.ipId} />
                             <DetailRow label="Media Type" value={mediaTypeDisplay} />
                             <DetailRow label="Creator" value={creatorName} />
                             <DetailRow label="Date Created" value={formattedDate} />
-                            {asset.tokenContract && <DetailRow label="Token Contract" value={asset.tokenContract} />}
+                            {detail?.tokenContract && <DetailRow label="Token Contract" value={detail.tokenContract} />}
                         </div>
                     </div>
                 )}
-                {activeTab === 'ledger' && <RoyaltyLedgerTab ipId={asset.ipId} />}
-                {activeTab === 'licensees' && <TopLicenseesTab ipId={asset.ipId} />}
+                {activeTab === 'ledger' && <RoyaltyLedgerTab ipId={detail?.ipId} />}
+                {activeTab === 'licensees' && <TopLicenseesTab ipId={detail?.ipId} />}
             </div>
         </div>
         <footer className="p-6 flex-shrink-0 border-t border-purple-900/50">
-            <a href={`https://explorer.story.foundation/ipa/${asset.ipId}`} target="_blank" rel="noopener noreferrer" className="w-full text-center block p-3 font-bold bg-purple-600 rounded-lg hover:bg-purple-700 transition-colors text-white">
+            <a href={`https://explorer.story.foundation/ipa/${detail?.ipId}`} target="_blank" rel="noopener noreferrer" className="w-full text-center block p-3 font-bold bg-purple-600 rounded-lg hover:bg-purple-700 transition-colors text-white">
                 View on Explorer
             </a>
         </footer>

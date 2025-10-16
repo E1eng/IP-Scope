@@ -22,7 +22,17 @@ const getImageUrl = (asset) => {
 // Komponen untuk menampilkan panel analitik on-chain
 const AnalyticsPanel = ({ asset, loading }) => {
     const analytics = asset?.analytics;
-    if (loading) return <div className="p-4 text-center text-purple-400">Loading analytics...</div>;
+    if (loading) return (
+        <div className="bg-gray-800/50 p-4 rounded-lg border border-gray-700">
+            <div className="animate-pulse space-y-3">
+                <div className="h-4 w-40 bg-gray-700 rounded" />
+                <div className="h-5 w-24 bg-gray-700 rounded" />
+                <div className="h-3 w-full bg-gray-700 rounded" />
+                <div className="h-3 w-5/6 bg-gray-700 rounded" />
+                <div className="h-3 w-4/6 bg-gray-700 rounded" />
+            </div>
+        </div>
+    );
     if (!analytics) return (
         <div className="bg-gray-800/50 p-4 rounded-lg border border-gray-700 text-center text-gray-400">
             No analytics available.
@@ -93,7 +103,24 @@ const RoyaltyLedgerTab = ({ ipId }) => {
         fetchLedger();
     }, [ipId]);
 
-   if (isLoading) return <div className="text-center p-6 text-purple-400">Loading Royalty Ledger...</div>;
+    if (isLoading) return (
+        <div className="space-y-3">
+            {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="p-3 bg-gray-800/50 rounded-lg border border-gray-700/50">
+                    <div className="animate-pulse">
+                        <div className="flex justify-between items-center mb-2">
+                            <div className="h-4 w-24 bg-gray-700 rounded" />
+                            <div className="h-3 w-16 bg-gray-700 rounded" />
+                        </div>
+                        <div className="flex justify-between items-center">
+                            <div className="h-3 w-48 bg-gray-700 rounded" />
+                            <div className="h-3 w-24 bg-gray-700 rounded" />
+                        </div>
+                    </div>
+                </div>
+            ))}
+        </div>
+    );
     if (error) return <div className="text-center p-6 text-red-400 bg-red-900/30 rounded-lg break-words">{error}</div>;
     if (transactions.length === 0) return <div className="text-center p-6 text-gray-500">No royalty payment events found.</div>;
 
@@ -146,7 +173,18 @@ const TopLicenseesTab = ({ ipId }) => {
         fetchLicensees();
     }, [ipId]);
 
-    if (isLoading) return <div className="text-center p-4 text-purple-400">Loading Top Licensees...</div>;
+    if (isLoading) return (
+        <div className="space-y-2">
+            {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="p-3 bg-gray-800/50 rounded-lg border border-gray-700/50">
+                    <div className="animate-pulse flex justify-between items-center">
+                        <div className="h-4 w-40 bg-gray-700 rounded" />
+                        <div className="h-4 w-20 bg-gray-700 rounded" />
+                    </div>
+                </div>
+            ))}
+        </div>
+    );
     if (error) return <div className="text-center p-4 text-red-400 bg-red-900/30 rounded-lg break-words">{error}</div>;
     if (licensees.length === 0) return <div className="text-center p-4 text-gray-500">No licensees found.</div>;
     

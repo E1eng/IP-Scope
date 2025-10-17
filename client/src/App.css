@@ -49,6 +49,87 @@
     animation: slideUp 0.5s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
+  /* Balanced Layout System */
+  .container-balanced {
+    @apply container mx-auto px-4 py-6;
+    max-width: 1400px;
+  }
+
+  .card-balanced {
+    @apply bg-gray-800/40 backdrop-blur-sm border border-gray-700/30 rounded-lg;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .card-balanced:hover {
+    @apply bg-gray-800/60 border-gray-600/40;
+    transform: translateY(-2px);
+  }
+
+  /* Responsive Grid System */
+  .grid-responsive {
+    @apply grid gap-4;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  }
+
+  .grid-responsive-sm {
+    @apply grid gap-3;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  }
+
+  /* Enhanced Card Hover Effects */
+  .card-hover-lift {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .card-hover-lift:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  }
+
+  /* Smooth Transitions */
+  .transition-smooth {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  /* Focus States */
+  .focus-ring {
+    @apply focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-900;
+  }
+
+  /* Mobile Optimizations */
+  @media (max-width: 768px) {
+    .container-balanced {
+      @apply px-3 py-4;
+    }
+    
+    .grid-responsive {
+      @apply gap-3;
+      grid-template-columns: 1fr;
+    }
+    
+    .grid-responsive-sm {
+      @apply gap-2;
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+
+  /* Enhanced Typography */
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  /* Loading States */
+  .loading-shimmer {
+    background: linear-gradient(90deg, #374151 25%, #4b5563 50%, #374151 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+  }
+
+  @keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+  }
+
   .animate-slide-down {
     animation: slideDown 0.5s cubic-bezier(0.4, 0, 0.2, 1);
   }

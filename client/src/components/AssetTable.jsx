@@ -36,15 +36,15 @@ const WalletFilterForm = ({ onFetch, initialOwnerAddress, isSubmitting }) => {
         onFetch(cleanedAddress); 
     };
 
-    const inputClasses = "flex-grow input-modern text-lg w-full min-w-0 px-6 py-4";
-    const buttonClasses = "btn-primary text-lg px-8 py-4 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0";
+    const inputClasses = "flex-grow input-modern text-base w-full min-w-0 px-4 py-3";
+    const buttonClasses = "btn-primary text-base px-6 py-3 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0";
 
     return (
-        <form onSubmit={handleSubmit} className="space-y-8 w-full">
+        <form onSubmit={handleSubmit} className="space-y-4 w-full">
             {/* Input Tunggal */}
-            <div className="flex flex-col lg:flex-row gap-6">
+            <div className="flex flex-col lg:flex-row gap-4">
                 <div className="flex-1 min-w-0">
-                  <label className="block text-sm font-semibold text-gray-300 mb-3">
+                  <label className="block text-sm font-semibold text-gray-300 mb-2">
                     Alamat Wallet atau Kontrak Token
                   </label>
                   <input
@@ -52,7 +52,7 @@ const WalletFilterForm = ({ onFetch, initialOwnerAddress, isSubmitting }) => {
                       value={addressInput}
                       onChange={(e) => setAddressInput(e.target.value)}
                       placeholder="Masukkan alamat wallet atau kontrak token..."
-                      className={inputClasses}
+                      className={`${inputClasses} focus-ring transition-smooth`}
                       required
                       disabled={isSubmitting}
                   />
@@ -61,7 +61,7 @@ const WalletFilterForm = ({ onFetch, initialOwnerAddress, isSubmitting }) => {
                   <button
                       type="submit"
                       disabled={isSubmitting || !addressInput.trim()}
-                      className={buttonClasses}
+                      className={`${buttonClasses} focus-ring transition-smooth`}
                   >
                       {isSubmitting ? (
                         <div className="flex items-center space-x-2">

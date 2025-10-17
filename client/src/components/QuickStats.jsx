@@ -99,14 +99,14 @@ const QuickStats = ({ ownerAddress }) => {
   ];
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+    <div className="grid-responsive-sm mb-4">
       {quickStats.map((stat, index) => (
-        <div key={index} className="bg-gray-800/50 rounded-lg p-4 border border-gray-700/30">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm text-gray-400">{stat.label}</span>
-            <span className="text-lg">{stat.icon}</span>
+        <div key={index} className="bg-gray-800/50 rounded-lg p-3 border border-gray-700/30">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs text-gray-400">{stat.label}</span>
+            <span className="text-sm">{stat.icon}</span>
           </div>
-          <div className={`text-xl font-bold ${stat.color}`}>
+          <div className={`text-lg font-bold ${stat.color}`}>
             {stat.value}
           </div>
         </div>

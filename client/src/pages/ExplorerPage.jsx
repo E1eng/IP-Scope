@@ -1,300 +1,278 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import axios from 'axios';
-import StatCard from '../components/StatCard';
+import React, { useState, useEffect } from 'react';
+import { useSearch } from '../SearchContext';
 import AssetTable from '../components/AssetTable'; 
 import RemixDetailModal from '../components/RemixDetailModal';
-import { useSearch } from '../SearchContext'; 
+import RoyaltyAnalytics from '../components/RoyaltyAnalytics';
+import OnChainAnalytics from '../components/OnChainAnalytics';
+import StatCard from '../components/StatCard';
+import QuickStats from '../components/QuickStats';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
-const PAGE_LIMIT = 20;
-
-const ETH_ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/; // Regex untuk validasi alamat
-
-function ExplorerPage() {
+const ExplorerPage = () => {
   const {
     results,
-    offset,
+        currentQuery, 
+        currentAddress, 
+        currentTokenContract,
     totalResults,
+        hasSearched, 
     updateSearchState,
-    hasSearched,
-    currentQuery: currentAddress, 
-    currentTokenContract, 
+        setCurrentAddress,
+        setCurrentTokenContract
   } = useSearch();
 
-  const [isLoading, setIsLoading] = useState(false);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [error, setError] = useState(null);
-  const [hasMore, setHasMore] = useState(offset < totalResults); 
   const [selectedAsset, setSelectedAsset] = useState(null);
-  
-  const [stats, setStats] = useState({ totalRoyalties: 'N/A', totalAssets: '0', overallDisputeStatus: '0' });
+    const [showRoyaltyAnalytics, setShowRoyaltyAnalytics] = useState(false);
 
 
-  // Efek untuk mengambil statistik dashboard (REAL)
-  useEffect(() => {
-    const fetchDashboardStats = async () => {
-        const addressForStats = currentAddress || currentTokenContract;
-
-        // 1. Sinkronkan totalAssets dari Context
-        setStats(prev => ({ 
-            ...prev, 
-            totalAssets: totalResults.toLocaleString() 
-        }));
-
-        if (!addressForStats) {
-            setStats(prev => ({ ...prev, totalRoyalties: 'N/A', overallDisputeStatus: '0' }));
-            return;
-        }
-
-        try {
-            // 2. Panggil endpoint /stats untuk mendapatkan Royalties dan Dispute Status
-            const params = new URLSearchParams({ ownerAddress: addressForStats });
-            const response = await axios.get(`${API_BASE_URL}/stats?${params.toString()}`);
-            
-            // 3. UPDATE ADVANCED STATS (Royalties & Dispute Status)
-            setStats(prev => ({
-                ...prev, 
-                totalRoyalties: response.data.totalRoyalties,
-                overallDisputeStatus: response.data.overallDisputeStatus
-            }));
-
-        } catch (err) {
-            console.error("Failed to fetch dashboard stats:", err);
-            // Pada kegagalan, tampilkan 'Error'
-            setStats(prev => ({ 
-                ...prev, 
-                totalRoyalties: 'Error', 
-                overallDisputeStatus: 'Error' 
-            }));
-        }
+    const handleAssetClick = (asset) => {
+        setSelectedAsset(asset);
     };
-    fetchDashboardStats();
-  }, [currentAddress, currentTokenContract, totalResults, updateSearchState, API_BASE_URL]);
 
+    const handleCloseModal = () => {
+        setSelectedAsset(null);
+    };
 
-  // Helper untuk melakukan satu panggilan API (tetap sama)
-  const fetchAttempt = useCallback(async (ownerAddr, tokenContractAddr, currentOffset) => {
-    
-    // Membangun Query Parameters
-    const params = new URLSearchParams({
-        limit: PAGE_LIMIT,
-        offset: currentOffset,
-    });
-    
-    if (ownerAddr) {
-        params.append('ownerAddress', ownerAddr);
-    }
-    
-    if (tokenContractAddr) {
-        params.append('tokenContract', tokenContractAddr);
-    }
+    const handleSearch = async (query) => {
+        try {
+            updateSearchState({ 
+                hasSearched: true, 
+                currentQuery: query,
+                currentAddress: query,
+                currentTokenContract: query,
+                results: [],
+                totalResults: 0,
+                offset: 0
+            });
 
-    // FIX: Tambahkan timeout eksplisit 10 detik
-    const response = await axios.get(`${API_BASE_URL}/assets?${params.toString()}`, { timeout: 10000 });
-    return response.data; // { data, pagination }
-  }, [API_BASE_URL]);
+            // Update context state
+            setCurrentAddress(query);
+            setCurrentTokenContract(query);
 
-  const handleFetchAssets = useCallback(async (address, newSearch = true) => { 
-    const singleInput = address?.trim();
-    
-    // Validasi Dasar
-    if (!singleInput || !ETH_ADDRESS_REGEX.test(singleInput)) {
-        setError("Please enter a valid Ethereum wallet address or token contract.");
-        return;
-    }
-    
-    // START Loading State
-    newSearch ? setIsLoading(true) : setIsLoadingMore(true);
-    setError(null);
-    updateSearchState({ hasSearched: true });
-
-    let currentOffset = newSearch ? 0 : offset;
-    let finalSuccess = false;
-    let finalError = null;
-    let total = 0;
-    let responseData = [];
-    
-    // --- Pembungkus Try-Finally Global untuk menjamin reset loading ---
-    try {
-        // Reset Context State untuk pencarian baru
-        if (newSearch) {
+            const response = await fetch(`http://localhost:3001/api/assets?ownerAddress=${encodeURIComponent(query)}&limit=200&offset=0`);
+            
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+            const data = await response.json();
+            
+            updateSearchState({
+                results: data.data || [],
+                totalResults: data.pagination?.total || 0,
+                offset: 0
+            });
+        } catch (error) {
+            console.error('Search error:', error);
             updateSearchState({
                 results: [],
-                offset: 0,
                 totalResults: 0,
-                currentQuery: singleInput, // Simpan input di Context
-                currentTokenContract: null, // Reset contract role
+                error: error.message
             });
-            currentOffset = 0;
         }
-        
-        // --- 1. PERCOBAAN 1: COBA SEBAGAI OWNER ---
+    };
+
+    const handleLoadMore = async () => {
+        if (!currentQuery) return;
+
         try {
-            console.log(`Attempt 1: Owner=${singleInput}, Contract=NULL`);
-            const response1 = await fetchAttempt(singleInput, null, currentOffset); 
+            const newOffset = results.length;
+            const response = await fetch(`http://localhost:3001/api/assets?ownerAddress=${encodeURIComponent(currentQuery)}&limit=200&offset=${newOffset}`);
             
-            if (response1.data.length > 0) {
-                finalSuccess = true;
-                responseData = response1.data;
-                total = response1.pagination?.total || 0;
-                updateSearchState({ currentTokenContract: null, currentQuery: singleInput });
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
             }
-        } catch (e) {
-            finalError = e;
-            console.warn("Attempt 1 (Owner) failed or returned zero assets. Trying fallback logic.", e);
-        }
-        
-        // --- 2. PERCOBAAN 2: FALLBACK SEBAGAI TOKEN CONTRACT ---
-        if (!finalSuccess) {
-             console.log(`Attempt 2: Fallback Swap (Owner=NULL, Contract=${singleInput}).`);
-             try {
-                 // Coba menggunakan Input Tunggal sebagai Token Contract
-                 const response2 = await fetchAttempt(null, singleInput, currentOffset); 
-
-                 if (response2.data.length > 0) {
-                     finalSuccess = true;
-                     responseData = response2.data;
-                     total = response2.pagination?.total || 0;
-                     
-                     // PENTING: Jika berhasil di sini, kita set Owner=NULL dan Contract=Input
-                     updateSearchState({
-                         currentQuery: null, // Owner disetel ke NULL
-                         currentTokenContract: singleInput, // Input Utama yang berhasil sebagai Contract
-                     });
-                 }
-             } catch (e) {
-                 finalError = e;
-                 console.error("Attempt 2 (Fallback Contract) failed.", e);
-             }
-        }
-        
-        // --- 3. FINALISASI STATE ---
-        const updatedResults = newSearch ? responseData : [...results, ...responseData];
-        const newOffset = updatedResults.length;
-
-        if (finalSuccess) {
+            
+            const data = await response.json();
+            
             updateSearchState({
-                results: updatedResults,
-                offset: newOffset,
-                totalResults: total,
-                hasSearched: true,
+                results: [...results, ...(data.data || [])],
+                totalResults: data.pagination?.total || totalResults,
+                offset: newOffset
             });
-            setHasMore(newOffset < total); 
-        } else if (newSearch) {
-            // Final Failure State
-            updateSearchState({ results: [], offset: 0, totalResults: 0, hasSearched: true, currentQuery: null, currentTokenContract: null });
-            setError(
-                finalError?.response?.data?.message || "No assets found. The address is neither an owner nor a token contract, or there is a network issue."
-            );
-            setHasMore(false);
+        } catch (error) {
+            console.error('Load more error:', error);
         }
-    } catch (e) {
-        // Tangkap error kritis yang mungkin terjadi selama manipulasi state
-        setError("Critical error during asset loading.");
-        console.error("CRITICAL UNCAUGHT ERROR:", e);
-    } finally {
-        // GUARANTEE RESET LOADING STATE (Ini adalah kunci perbaikan)
-        newSearch ? setIsLoading(false) : setIsLoadingMore(false);
-    }
-  }, [offset, results, updateSearchState, fetchAttempt]); 
-  
-  // Logika pemulihan state (self-healing)
-  useEffect(() => {
-      if (hasSearched && (currentAddress || currentTokenContract) && results.length === 0 && totalResults > 0 && !isLoading) {
-          console.log("[EXPLORER] Attempting to recover lost asset list.");
-          handleFetchAssets(currentAddress || currentTokenContract, true); 
-      }
-  }, [hasSearched, currentAddress, currentTokenContract, results.length, totalResults, isLoading, handleFetchAssets]);
-
-
-  const handleSubmit = (address) => { 
-      handleFetchAssets(address, true);
-  };
-  
-  const handleLoadMore = () => {
-      const addressToLoad = currentAddress || currentTokenContract;
-      if (addressToLoad) {
-          handleFetchAssets(addressToLoad, false);
-      }
-  };
-  
-  // FIX: Menggunakan find untuk mendapatkan objek aset lengkap
-  const handleViewDetails = (ipId) => {
-    const asset = results.find(a => a.ipId === ipId);
-    setSelectedAsset(asset);
-  };
-
-  const handleCloseModal = () => {
-    setSelectedAsset(null);
-  };
-
+    };
 
   return (
-    <div className="space-y-8">
-        <h1 className="text-3xl font-extrabold text-white mb-6">RoyaltyFlow Dashboard</h1>
+        <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
+            <div className="container mx-auto px-4 py-8">
+                {/* Header */}
+                <div className="text-center mb-12">
+                    <h1 className="text-4xl lg:text-5xl font-bold text-white mb-4">
+                        IP Asset Explorer
+                    </h1>
+                    <p className="text-xl text-gray-300 mb-8">
+                        Discover and analyze IP assets on Story Protocol
+                    </p>
+          </div>
 
-        {/* Wallet Input Area */}
-        <div className="bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-700">
-            <h2 className="text-xl font-bold mb-4 text-purple-400">1. Input Creator Address</h2>
-            
-            <AssetTable.WalletFilterForm
-                onFetch={handleSubmit}
-                initialOwnerAddress={currentAddress || currentTokenContract}
-                isSubmitting={isLoading} 
-            />
-            
-            {error && <p className="text-red-400 text-sm mt-3">{error}</p>}
+
+                {/* Search Section */}
+                <div className="mb-8">
+                    <AssetTable.WalletFilterForm onFetch={handleSearch} />
         </div>
 
-        {/* Header Dashboard Stats */}
+                {/* Results Section */}
         {hasSearched && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-                <StatCard title="Total Royalties Collected" value={stats.totalRoyalties} icon="royalty" />
-                <StatCard title="Total IP Assets Found" value={stats.totalAssets.toLocaleString()} icon="asset" /> 
-                <StatCard 
-                    title="Total Dispute Status" 
-                    value={stats.overallDisputeStatus === 'None' ? '0' : stats.overallDisputeStatus} 
-                    icon="license" 
-                    isWarning={stats.overallDisputeStatus === 'Active'} 
-                />
+                    <div className="space-y-6">
+                        {/* Quick Stats */}
+                        <QuickStats ownerAddress={currentQuery} />
+                        
+
+                        {/* Results Header */}
+                        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                            <div>
+                                <h2 className="text-2xl font-bold text-white mb-2">
+                                    Search Results
+                                </h2>
+                                <p className="text-gray-400">
+                                    Found {totalResults} IP assets for "{currentQuery}"
+                                </p>
+          </div>
+                            
+                            {/* Royalty Analytics Button */}
+                        <button
+                                onClick={() => setShowRoyaltyAnalytics(true)}
+                                className="btn-primary text-lg px-6 py-3"
+                            >
+                                💰 Royalty Analytics
+                        </button>
+                    </div>
+
+                        {/* Results Grid */}
+                        {results.length > 0 ? (
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                {results.map((asset, index) => (
+                                    <div
+                                        key={asset.ipId || index}
+                                        onClick={() => handleAssetClick(asset)}
+                                        className="card-modern p-6 cursor-pointer hover:scale-105 transition-all duration-300 group"
+                                    >
+                                        <div className="space-y-4">
+                                            {/* Asset Image */}
+                                            {(asset.nftMetadata?.image?.cachedUrl || asset.imageUrl) && (
+                                                <div className="aspect-video rounded-lg overflow-hidden bg-gray-800">
+                                                    <img
+                                                        src={asset.nftMetadata?.image?.cachedUrl || asset.imageUrl}
+                                                        alt={asset.name || asset.title || 'Asset'}
+                                                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                                        onError={(e) => {
+                                                            e.target.style.display = 'none';
+                                                        }}
+                                                    />
+                </div>
+            )}
+
+                                            {/* Asset Info */}
+                                            <div className="space-y-2">
+                                                <h3 className="text-lg font-semibold text-white line-clamp-2">
+                                                    {asset.name || asset.title || 'Untitled Asset'}
+                                                </h3>
+                                                
+                                                {(asset.description || asset.nftMetadata?.description) && (
+                                                    <p className="text-gray-400 text-sm line-clamp-2">
+                                                        {asset.description || asset.nftMetadata?.description}
+                                </p>
+                            )}
+
+                                                {/* IP ID */}
+                                                <div className="flex items-center space-x-2">
+                                                    <span className="text-xs text-gray-500">IP ID:</span>
+                                                    <span className="text-xs font-mono text-blue-400 truncate">
+                                                        {asset.ipId}
+                                                    </span>
+                        </div>
+
+                                                {/* Media Type */}
+                                                {(asset.mediaType || asset.nftMetadata?.raw?.metadata?.mediaType) && (
+                                                    <div className="flex items-center space-x-2">
+                                                        <span className="text-xs text-gray-500">Type:</span>
+                                                        <span className="text-xs text-purple-400">
+                                                            {asset.mediaType || asset.nftMetadata?.raw?.metadata?.mediaType}
+                                                        </span>
             </div>
         )}
         
-        {/* Results Area (Asset Table) */}
-        {hasSearched && (
-            <div className="space-y-6">
-                <h2 className="text-2xl font-bold text-white border-b border-gray-700 pb-2">2. IP Asset Portfolio</h2>
+                                                {/* Children Count */}
+                                                {asset.childrenCount !== undefined && (
+                                                    <div className="flex items-center space-x-2">
+                                                        <span className="text-xs text-gray-500">Derivatives:</span>
+                                                        <span className="text-xs text-green-400">
+                                                            {asset.childrenCount}
+                                                        </span>
+          </div>
+        )}
 
-                <AssetTable
-                    assets={results}
-                    isLoading={isLoading}
-                    error={error}
-                    onAssetClick={handleViewDetails} // Meneruskan fungsi yang mendapatkan objek aset
-                />
-                
-                <div className="text-center mt-10">
-                    {hasMore && !isLoading && (
-                        <button
-                            onClick={handleLoadMore}
-                            disabled={isLoadingMore}
-                            className="p-3 px-8 font-bold bg-purple-600 rounded-xl hover:bg-purple-700 transition-colors disabled:bg-gray-700 disabled:cursor-not-allowed text-white shadow-md"
-                        >
-                            {isLoadingMore ? 'Loading More...' : 'Load More Assets'}
-                        </button>
-                    )}
+                                                {/* Total Royalty Collected */}
+                                                {asset.totalRoyaltyCollected !== undefined && (
+                                                    <div className="flex items-center space-x-2">
+                                                        <span className="text-xs text-gray-500">Royalty:</span>
+                                                        <span className="text-xs text-yellow-400 font-semibold">
+                                                            ${asset.totalRoyaltyCollected.toFixed(2)} USDT
+                                                        </span>
+                </div>
+            )}
+                </div>
+
+                                            {/* Hover Effect */}
+                                            <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                                                <div className="absolute inset-0 bg-gradient-to-t from-purple-500/20 to-transparent rounded-lg"></div>
+                </div>
                 </div>
             </div>
+                                ))}
+                </div>
+              ) : (
+                            <div className="text-center py-12">
+                                <div className="text-gray-400 text-lg mb-4">
+                                    No assets found for this address
+            </div>
+                                <p className="text-gray-500">
+                                    Try searching with a different address
+                    </p>
+                  </div>
+                )}
+
+                        {/* Load More Button */}
+                        {results.length > 0 && results.length < totalResults && (
+                            <div className="text-center mt-8">
+                        <button
+                            onClick={handleLoadMore}
+                                    className="btn-secondary text-lg px-8 py-3"
+                        >
+                                    Load More ({totalResults - results.length} remaining)
+                        </button>
+                            </div>
+                    )}
+                </div>
+                )}
+
+                {/* On-Chain Analytics */}
+                {hasSearched && currentQuery && (
+                    <div className="mt-12">
+                        <OnChainAnalytics address={currentQuery} />
+            </div>
         )}
+            </div>
       
-        {/* Detail Modal */}
+            {/* Asset Detail Modal */}
         {selectedAsset && (
             <RemixDetailModal 
                 asset={selectedAsset} 
                 onClose={handleCloseModal} 
             />
         )}
+
+            {/* Royalty Analytics Modal */}
+            {showRoyaltyAnalytics && currentQuery && (
+                <RoyaltyAnalytics
+                    ownerAddress={currentQuery}
+                    onClose={() => setShowRoyaltyAnalytics(false)}
+            />
+        )}
     </div>
   );
-}
+};
 
 export default ExplorerPage;

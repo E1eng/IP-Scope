@@ -2,52 +2,24 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import LicenseCard from './LicenseCard';
 import DetailRow from './DetailRow';
+import ChildrenList from './ChildrenList';
 import { Link } from 'react-router-dom';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
-// Komponen untuk menampilkan panel analitik on-chain
-const AnalyticsPanel = ({ asset }) => {
-    const analytics = asset?.analytics;
-
-    // Tampilkan pesan loading jika data analitik belum ada
-    if (!analytics) {
-        return <div className="p-4 text-center text-purple-400">Loading analytics...</div>;
+// Helper untuk konversi URL gambar (mirip dengan card di tabel)
+const getImageUrl = (asset) => {
+    let url = asset?.nftMetadata?.image?.cachedUrl ||
+              asset?.nftMetadata?.raw?.metadata?.image ||
+              asset?.nftMetadata?.image?.originalUrl ||
+              asset?.nftMetadata?.uri;
+    if (typeof url === 'string') {
+        if (url.startsWith('ipfs://')) return url.replace('ipfs://', 'https://ipfs.io/ipfs/');
+        return url.trim();
     }
-    // Tampilkan pesan error jika terjadi kesalahan saat mengambil analitik
-    if (analytics.errorMessage) {
-        return (
-            <div className="bg-red-900/40 p-4 rounded-lg border border-red-700">
-                <h3 className='text-md font-semibold text-red-300 mb-2'>Analytics Error</h3>
-                <p className="text-xs text-red-200 font-mono break-words">{analytics.errorMessage}</p>
-            </div>
-        );
-    }
-    
-    const royalties = analytics.totalRoyaltiesPaid || {};
-    const royaltyEntries = Object.entries(royalties);
-
-    return (
-        <div className="bg-gray-800/50 p-4 rounded-lg border border-gray-700">
-            <h3 className='text-md font-semibold text-purple-300 mb-3'>On-Chain Analytics</h3>
-            <div className="space-y-2">
-                <div className="flex justify-between items-center py-2 border-b border-purple-900/50">
-                    <span className="text-xs font-semibold text-purple-300 uppercase tracking-wide">Dispute Status</span>
-                    <span className={`text-xs font-bold px-2 py-1 rounded-full ${analytics.disputeStatus === 'Active' ? 'bg-red-500 text-white' : 'bg-green-500/20 text-green-300'}`}>
-                        {analytics.disputeStatus || 'None'}
-                    </span>
-                </div>
-                {royaltyEntries.length > 0 ? (
-                    royaltyEntries.map(([currency, totalValue]) => (
-                        <DetailRow key={currency} label={`Total Paid (${currency})`} value={totalValue} />
-                    ))
-                ) : (
-                    <DetailRow label="Total Royalties Paid" value="0.0000" />
-                )}
-            </div>
-        </div>
-    );
+    return '/favicon.png';
 };
+
 
 // Komponen untuk tab "Royalty Ledger"
 const RoyaltyLedgerTab = ({ ipId }) => {
@@ -61,8 +33,14 @@ const RoyaltyLedgerTab = ({ ipId }) => {
             setIsLoading(true);
             setError(null);
             try {
-                const response = await axios.get(`${API_BASE_URL}/assets/${ipId}/royalty-transactions`);
-                setTransactions(response.data || []);
+                try {
+                    const response = await axios.get(`${API_BASE_URL}/assets/${ipId}/royalty-transactions`);
+                    setTransactions(response.data || []);
+                } catch (errPrimary) {
+                    // Fallback ke alias lama jika tersedia
+                    const response2 = await axios.get(`${API_BASE_URL}/assets/${ipId}/transactions`);
+                    setTransactions(response2.data || []);
+                }
             } catch (err) {
                 const errorMessage = err.response?.data?.message || "Failed to load royalty ledger.";
                 setError(errorMessage);
@@ -143,7 +121,7 @@ const TopLicenseesTab = ({ ipId }) => {
                         </p>
                     </div>
                     <div className="text-right">
-                        <p className="font-bold text-sm text-green-400">{lic.totalValue}</p>
+                        <p className="font-bold text-sm text-green-400">{lic.totalValue || lic.totalValueFormatted}</p>
                         <p className="text-gray-500 mt-0.5">{lic.count} payments</p>
                     </div>
                 </div>
@@ -155,17 +133,97 @@ const TopLicenseesTab = ({ ipId }) => {
 // Komponen Utama KONTEN (Bukan Modal Sebenarnya Lagi)
 const RemixDetailModalContent = ({ asset, onClose, isLoading }) => {
   const [activeTab, setActiveTab] = useState('details');
+  const [detail, setDetail] = useState(asset);
+  const [totalChildren, setTotalChildren] = useState(asset?.childrenCount || null);
+  const [totalDescendants, setTotalDescendants] = useState(asset?.descendantsCount || null);
+  const [loadingChildren, setLoadingChildren] = useState(!asset?.childrenCount);
 
   useEffect(() => {
     setActiveTab('details');
   }, [asset?.ipId]);
 
-  // Kami menganggap AssetDetailPage sudah menangani loading/error di level atas.
+  // Fetch detail saat modal dibuka
+  useEffect(() => {
+    let cancelled = false;
+    setDetail(asset);
+    
+    // If we already have childrenCount from props, don't show loading
+    if (asset?.childrenCount !== undefined) {
+      setTotalChildren(asset.childrenCount);
+      setTotalDescendants(asset.descendantsCount || asset.childrenCount);
+      setLoadingChildren(false);
+    } else {
+      setLoadingChildren(true);
+    }
+    
+    const load = async () => {
+      try {
+        if (!asset?.ipId) {
+          if (!cancelled) {
+            setLoadingChildren(false);
+          }
+          return;
+        }
+        const resp = await axios.get(`${API_BASE_URL}/assets/${asset.ipId}`);
+        if (!cancelled) {
+          const assetData = resp.data || asset;
+          setDetail(assetData);
+          
+          // Debug logging
+          console.log('Asset Detail API Response:', {
+            childrenCount: assetData.childrenCount,
+            descendantsCount: assetData.descendantsCount,
+            assetData: assetData
+          });
+          
+          // Use childrenCount and descendantsCount from API response
+          setTotalChildren(assetData.childrenCount || 0);
+          setTotalDescendants(assetData.descendantsCount || 0);
+          setLoadingChildren(false);
+        }
+      } catch (_) {
+        // keep minimal detail and use asset data if available
+        if (!cancelled) {
+          setTotalChildren(asset?.childrenCount || 0);
+          setTotalDescendants(asset?.descendantsCount || 0);
+          setLoadingChildren(false);
+        }
+      }
+    };
+    load();
+    return () => { cancelled = true; };
+  }, [asset?.ipId]);
+
+  const formattedDate = detail?.createdAt ? new Date(detail.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Not Provided';
+  const creatorName = detail?.nftMetadata?.raw?.metadata?.creators?.[0]?.name || 'Not Provided';
+  // Determine media type with better fallback logic
+  const getMediaType = () => {
+    if (detail?.mediaType && detail.mediaType !== 'UNKNOWN') {
+      return detail.mediaType;
+    }
+    
+    // Fallback: try to determine from nftMetadata
+    const imageUrl = detail?.nftMetadata?.image?.cachedUrl || 
+                    detail?.nftMetadata?.raw?.metadata?.image || 
+                    detail?.nftMetadata?.image?.originalUrl;
+    
+    if (imageUrl) {
+      const extension = imageUrl.split('.').pop()?.toLowerCase();
+      if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(extension)) {
+        return 'IMAGE';
+      }
+      if (['mp4', 'webm', 'mov', 'avi'].includes(extension)) {
+        return 'VIDEO';
+      }
+      if (['mp3', 'wav', 'ogg', 'm4a'].includes(extension)) {
+        return 'AUDIO';
+      }
+    }
+    
+    return 'Not Specified';
+  };
   
- 
-  const formattedDate = asset.createdAt ? new Date(asset.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Not Provided';
-  const creatorName = asset.nftMetadata?.raw?.metadata?.creators?.[0]?.name || 'Not Provided';
-  const mediaTypeDisplay = asset.mediaType === 'UNKNOWN' ? 'Not Specified' : asset.mediaType;
+  const mediaTypeDisplay = getMediaType();
   // UI/UX: Rombak tampilan agar sesuai untuk halaman penuh.
 return (
     <div 
@@ -180,7 +238,17 @@ return (
       >
         <header className="p-6 flex-shrink-0 border-b border-purple-900/50">
             <div className="flex justify-between items-start">
-                <h2 className="text-2xl font-bold text-white tracking-tight line-clamp-2 pr-10">{asset.title || 'Untitled Asset'}</h2>
+                <div className="flex items-center gap-4 pr-10">
+                  <div className="w-14 h-14 rounded-lg overflow-hidden border border-gray-700 flex-shrink-0">
+                    <img
+                      src={getImageUrl(detail)}
+                      alt="Asset Preview"
+                      className="w-full h-full object-cover"
+                      onError={(e) => { e.target.onerror = null; e.target.src = '/favicon.png'; }}
+                    />
+                  </div>
+                  <h2 className="text-2xl font-bold text-white tracking-tight line-clamp-2">{detail?.title || 'Untitled Asset'}</h2>
+                </div>
                 <button 
                     onClick={onClose} 
                     className="text-gray-400 hover:text-red-400 p-2 rounded-full transition-colors bg-gray-800"
@@ -191,6 +259,7 @@ return (
             </div>
             <div className="flex mt-4 border-b border-gray-700">
                 <button onClick={() => setActiveTab('details')} className={`py-2 px-5 font-semibold transition-colors ${activeTab === 'details' ? 'text-purple-400 border-b-2 border-purple-400' : 'text-gray-400 hover:text-white'}`}>Details</button>
+                <button onClick={() => setActiveTab('derivatives')} className={`py-2 px-5 font-semibold transition-colors ${activeTab === 'derivatives' ? 'text-purple-400 border-b-2 border-purple-400' : 'text-gray-400 hover:text-white'}`}>Derivative Works</button>
                 <button onClick={() => setActiveTab('ledger')} className={`py-2 px-5 font-semibold transition-colors ${activeTab === 'ledger' ? 'text-purple-400 border-b-2 border-purple-400' : 'text-gray-400 hover:text-white'}`}>Royalty Ledger</button>
                 <button onClick={() => setActiveTab('licensees')} className={`py-2 px-5 font-semibold transition-colors ${activeTab === 'licensees' ? 'text-purple-400 border-b-2 border-purple-400' : 'text-gray-400 hover:text-white'}`}>Top Licensees</button>
             </div>
@@ -200,24 +269,94 @@ return (
             <div className="pt-6">
                 {activeTab === 'details' && (
                     <div className="space-y-6">
-                        <AnalyticsPanel asset={asset} />
-                        <LicenseCard asset={asset} />
+                        {/* Asset Image and Description */}
+                        <div className="bg-gray-800/50 rounded-lg p-6 border border-gray-700/50">
+                            <div className="flex gap-6">
+                                {/* Large Image */}
+                                <div className="w-48 h-48 rounded-lg overflow-hidden border border-gray-700 flex-shrink-0">
+                                    <img
+                                        src={getImageUrl(detail)}
+                                        alt={detail?.title || 'Asset Preview'}
+                                        className="w-full h-full object-cover"
+                                        onError={(e) => { e.target.onerror = null; e.target.src = '/favicon.png'; }}
+                                    />
+                                </div>
+                                
+                                {/* Description */}
+                                <div className="flex-1">
+                                    <h3 className="text-lg font-semibold text-purple-300 mb-3">Description</h3>
+                                    <p className="text-gray-300 leading-relaxed">
+                                        {detail?.description || detail?.nftMetadata?.description || 'No description available.'}
+                                    </p>
+                                    
+                                    {/* Additional Metadata */}
+                                    <div className="mt-4 space-y-2 text-sm">
+                                        {detail?.nftMetadata?.raw?.metadata?.attributes && (
+                                            <div>
+                                                <span className="text-purple-300 font-medium">Attributes:</span>
+                                                <div className="mt-1 flex flex-wrap gap-2">
+                                                    {detail.nftMetadata.raw.metadata.attributes.slice(0, 4).map((attr, index) => (
+                                                        <span 
+                                                            key={index}
+                                                            className="bg-gray-700/50 px-2 py-1 rounded text-xs text-gray-300"
+                                                        >
+                                                            {attr.trait_type}: {attr.value}
+                                                        </span>
+                                                    ))}
+                                                    {detail.nftMetadata.raw.metadata.attributes.length > 4 && (
+                                                        <span className="text-gray-500 text-xs">
+                                                            +{detail.nftMetadata.raw.metadata.attributes.length - 4} more
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )}
+                                        
+                                        {detail?.uri && (
+                                            <div>
+                                                <span className="text-purple-300 font-medium">URI:</span>
+                                                <a 
+                                                    href={detail.uri}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-blue-400 hover:text-blue-300 ml-2 transition-colors break-all"
+                                                    title="View on IPFS"
+                                                >
+                                                    {detail.uri}
+                                                </a>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <LicenseCard asset={detail} />
                         <div className="space-y-1 pt-4 border-t border-gray-700 text-sm">
                             <h3 className="font-semibold text-purple-300 mb-2">Key Details</h3>
-                            <DetailRow label="IP ID" value={asset.ipId} />
+                            <DetailRow label="IP ID" value={detail?.ipId} />
                             <DetailRow label="Media Type" value={mediaTypeDisplay} />
                             <DetailRow label="Creator" value={creatorName} />
                             <DetailRow label="Date Created" value={formattedDate} />
-                            {asset.tokenContract && <DetailRow label="Token Contract" value={asset.tokenContract} />}
+                            <DetailRow 
+                                label="Direct Derivative Works" 
+                                value={loadingChildren ? "Loading..." : (totalChildren !== null ? totalChildren.toLocaleString() : "0")} 
+                            />
+                            <DetailRow 
+                                label="Total Descendants" 
+                                value={loadingChildren ? "Loading..." : (totalDescendants !== null ? totalDescendants.toLocaleString() : "0")} 
+                            />
+                            {detail?.tokenContract && <DetailRow label="Token Contract" value={detail.tokenContract} />}
                         </div>
                     </div>
                 )}
-                {activeTab === 'ledger' && <RoyaltyLedgerTab ipId={asset.ipId} />}
-                {activeTab === 'licensees' && <TopLicenseesTab ipId={asset.ipId} />}
+                {activeTab === 'derivatives' && <ChildrenList ipId={detail?.ipId} isOpen={true} totalCount={totalChildren || 0} />}
+                {activeTab === 'ledger' && <RoyaltyLedgerTab ipId={detail?.ipId} />}
+                {activeTab === 'licensees' && <TopLicenseesTab ipId={detail?.ipId} />}
             </div>
         </div>
         <footer className="p-6 flex-shrink-0 border-t border-purple-900/50">
-            <a href={`https://explorer.story.foundation/ipa/${asset.ipId}`} target="_blank" rel="noopener noreferrer" className="w-full text-center block p-3 font-bold bg-purple-600 rounded-lg hover:bg-purple-700 transition-colors text-white">
+            <a href={`https://explorer.story.foundation/ipa/${detail?.ipId}`} target="_blank" rel="noopener noreferrer" className="w-full text-center block p-3 font-bold bg-purple-600 rounded-lg hover:bg-purple-700 transition-colors text-white">
                 View on Explorer
             </a>
         </footer>

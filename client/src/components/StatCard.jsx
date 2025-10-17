@@ -27,43 +27,54 @@ const LoadingSkeleton = () => (
 // Error State Component
 const ErrorState = ({ message }) => (
     <div className="text-red-400">
-        <p className="text-sm font-semibold mb-1">Error Loading</p>
+        <p className="text-sm font-semibold mb-1">Failed to Load</p>
         <p className="text-xs text-gray-500">{message || 'Failed to load data'}</p>
     </div>
 );
 
-function StatCard({ title, value, isWarning = false, icon, isLoading = false, error = null, tooltip = null }) {
+function StatCard({ title, value, isWarning = false, icon, isLoading = false, error = null, progressPercent = null }) {
     // Determine if value indicates an error state
     const isError = error || value === 'Error' || value === 'N/A';
     
     return (
-        <div className={`bg-gray-800 p-6 rounded-xl border ${isWarning ? 'border-red-500' : isError ? 'border-yellow-600/50' : 'border-gray-700'} shadow-xl transition-all duration-200 hover:shadow-2xl relative group`}>
-            {/* Tooltip */}
-            {tooltip && (
-                <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <div className="bg-gray-950 text-xs text-gray-300 p-2 rounded-lg shadow-lg max-w-xs whitespace-normal">
-                        {tooltip}
-                    </div>
+        <div className={`stat-card ${isWarning ? 'border-red-500/50' : isError ? 'border-yellow-500/50' : 'border-gray-700/50'} group animate-scale-in`}>
+            <div className="flex justify-between items-start mb-4">
+                <div className="flex items-center space-x-2">
+                    <p className="text-sm font-semibold text-gray-400 uppercase tracking-wider">{title}</p>
                 </div>
-            )}
-            
-            <div className="flex justify-between items-start">
-                <p className="text-sm text-gray-400 uppercase tracking-wider">{title}</p>
-                {icon && <Icons type={icon} />}
+                {icon && <div className="opacity-80 group-hover:opacity-100 transition-opacity duration-300">{icon}</div>}
             </div>
             
-            <div className="mt-2">
+            <div className="space-y-3">
                 {isLoading ? (
                     <LoadingSkeleton />
                 ) : error ? (
                     <ErrorState message={error} />
                 ) : (
                     <>
-                        <p className={`text-3xl font-bold ${isWarning ? 'text-red-400' : isError ? 'text-yellow-500' : 'text-white'}`}>
-                            {value}
-                        </p>
-                        {isError && value === 'N/A' && (
-                            <p className="text-xs text-gray-500 mt-1">No data available yet</p>
+                        <div className="flex items-baseline space-x-2">
+                          <p className={`text-4xl font-black ${isWarning ? 'text-red-400' : isError ? 'text-yellow-500' : 'text-white'}`}>
+                              {value}
+                          </p>
+                          {isError && (value === 'N/A' || value === 'Error') && (
+                              <p className="text-sm text-gray-500">No data available</p>
+                          )}
+                        </div>
+                        
+                        {/* Optional progress bar */}
+                        {typeof progressPercent === 'number' && progressPercent >= 0 && progressPercent < 100 && (
+                            <div className="space-y-2">
+                                <div className="flex justify-between text-xs text-gray-400">
+                                  <span>Progress</span>
+                                  <span>{progressPercent}%</span>
+                                </div>
+                                <div className="h-2 bg-gray-700/50 rounded-full overflow-hidden">
+                                    <div 
+                                      className="h-full bg-gradient-to-r from-purple-500 to-blue-500 rounded-full transition-all duration-500 ease-out" 
+                                      style={{ width: `${progressPercent}%` }} 
+                                    />
+                                </div>
+                            </div>
                         )}
                     </>
                 )}

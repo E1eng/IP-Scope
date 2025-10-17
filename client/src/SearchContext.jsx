@@ -4,10 +4,11 @@ import React, { createContext, useState, useContext, useEffect } from 'react';
 const initialSearchState = {
     results: [],
     currentQuery: '', // Sekarang menyimpan alamat yang berhasil diidentifikasi (Owner atau Contract)
+    currentAddress: '',
+    currentTokenContract: '',
     offset: 0,
     totalResults: 0,
     hasSearched: false,
-    // REMOVED: currentTokenContract
 };
 
 const SearchContext = createContext();
@@ -23,12 +24,22 @@ export const SearchProvider = ({ children }) => {
         setSearchState(initialSearchState);
     };
 
+    const setCurrentAddress = (address) => {
+        setSearchState(prev => ({ ...prev, currentAddress: address }));
+    };
+
+    const setCurrentTokenContract = (contract) => {
+        setSearchState(prev => ({ ...prev, currentTokenContract: contract }));
+    };
+
     return (
         <SearchContext.Provider 
             value={{ 
                 ...searchState, 
                 updateSearchState,
-                resetSearchState
+                resetSearchState,
+                setCurrentAddress,
+                setCurrentTokenContract
             }}
         >
             {children}
@@ -37,3 +48,6 @@ export const SearchProvider = ({ children }) => {
 };
 
 export const useSearch = () => useContext(SearchContext);
+
+// Export SearchContext as default
+export default SearchContext;

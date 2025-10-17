@@ -1,6 +1,4 @@
-import React from 'react';
-// Menggunakan DetailRow yang Anda berikan
-import DetailRow from './DetailRow'; 
+import React from 'react'; 
 
 const StatPill = ({ label, value, colorClass }) => (
     <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${colorClass}`}>

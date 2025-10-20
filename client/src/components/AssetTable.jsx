@@ -176,11 +176,11 @@ function AssetTable({ assets, isLoading, error, onAssetClick, royaltyTotalsMap, 
     const [hoveredAssetId, setHoveredAssetId] = useState(null);
     
     const formatWip = (num) => {
-        if (num === null || num === undefined || isNaN(num)) return '-';
+        if (num === null || num === undefined || isNaN(num)) return '0.000 WIP';
         try {
-            return `${Number(num).toFixed(6)} WIP`;
+            return `${Number(num).toFixed(3)} WIP`;
         } catch {
-            return '-';
+            return '0.000 WIP';
         }
     };
     if (isLoading) {

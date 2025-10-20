@@ -417,12 +417,12 @@ const ExplorerPage = () => {
                             <span className="text-xs text-gray-500">Royalty Earned</span>
                             <span className="font-semibold text-indigo-400 text-sm">
                               {(() => {
-                                if (!asset.totalRoyaltyCollected) return '0.000000 WIP';
+                                if (!asset.totalRoyaltyCollected) return '0.000 WIP';
                                 if (typeof asset.totalRoyaltyCollected === 'string' && asset.totalRoyaltyCollected.includes(' ')) {
                                   return asset.totalRoyaltyCollected;
                                 }
                                 const num = Number(asset.totalRoyaltyCollected);
-                                return isNaN(num) ? '0.000000 WIP' : `${num.toFixed(6)} WIP`;
+                                return isNaN(num) ? '0.000 WIP' : `${num.toFixed(3)} WIP`;
                               })()}
                             </span>
                           </div>

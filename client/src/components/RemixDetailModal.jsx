@@ -244,7 +244,7 @@ const RoyaltyLedgerTab = ({ ipId }) => {
                                 const valueStr = tx.value || '0';
                                 const match = valueStr.match(/(\d+\.?\d*)/);
                                 return sum + (match ? parseFloat(match[1]) : 0);
-                            }, 0).toFixed(6)} WIP
+                            }, 0).toFixed(3)} WIP
                         </span>
                     </div>
                 </div>

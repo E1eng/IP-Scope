@@ -62,7 +62,7 @@ const QuickStats = ({ ownerAddress, searchResults = [], isLoading = false }) => 
         });
       }
 
-      totalEarningsWip = currencyBreakdown.WIP ? Number(currencyBreakdown.WIP.toFixed(6)) : 0;
+      totalEarningsWip = currencyBreakdown.WIP ? Number(currencyBreakdown.WIP.toFixed(3)) : 0;
 
       let totalDisputes = 0;
       for (const asset of searchResults) {
@@ -132,7 +132,7 @@ const QuickStats = ({ ownerAddress, searchResults = [], isLoading = false }) => 
                 {wipEntry && (
                   <div className="flex items-center space-x-2">
                     <span className="text-3xl font-bold text-indigo-400">
-                      {Number(wipEntry[1]).toFixed(6)} {wipEntry[0]}
+                      {Number(wipEntry[1]).toFixed(3)} {wipEntry[0]}
                     </span>
                   </div>
                 )}
@@ -154,7 +154,7 @@ const QuickStats = ({ ownerAddress, searchResults = [], isLoading = false }) => 
           })()}
         </div>
       ) : (
-        <span className="text-3xl font-bold text-gray-400">0.000000 WIP</span>
+        <span className="text-3xl font-bold text-gray-400">0.000 WIP</span>
       ),
       icon: DollarSign,
       color: 'text-indigo-400',

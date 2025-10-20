@@ -1,6 +1,4 @@
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
-
+import React from 'react';
 
 const StatPill = ({ label, value, colorClass }) => (
     <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${colorClass}`}>
@@ -13,13 +11,6 @@ const LicenseCard = ({ asset }) => {
   const licenses = asset.licenses || [];
   const pilTerms = licenses.length > 0 ? licenses[0] : null;
   const royaltyPolicy = licenses.find(license => license.terms?.royaltyPolicy && license.terms.royaltyPolicy !== "0x0000000000000000000000000000000000000000") || null;
-  
-  // Debug logging
-  console.log('[LICENSE CARD] Asset data:', asset);
-  console.log('[LICENSE CARD] Licenses:', licenses);
-  console.log('[LICENSE CARD] PIL terms:', pilTerms);
-  console.log('[LICENSE CARD] Royalty policy:', royaltyPolicy);
-  
   
   const hasPilTerms = pilTerms && pilTerms.licenseTermsId && pilTerms.licenseTermsId !== 'Not available';
   const hasRoyaltyPolicy = royaltyPolicy && royaltyPolicy.terms && royaltyPolicy.terms.royaltyPolicy !== "0x0000000000000000000000000000000000000000";

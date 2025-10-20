@@ -109,7 +109,6 @@ const ExplorerPage = () => {
 
   const handleSearch = async (query) => {
     const searchStart = Date.now();
-    console.log(`[FRONTEND] SEARCH_START timestamp=${new Date().toISOString()} address=${query}`);
     
     try {
       setIsLoading(true);
@@ -131,7 +130,6 @@ const ExplorerPage = () => {
       setCurrentTokenContract(query);
 
       // Fetch assets from real API
-      console.log(`[FRONTEND] API_REQUEST url=http://localhost:3001/api/assets?ownerAddress=${query}&limit=50&offset=0`);
       const response = await fetch(`http://localhost:3001/api/assets?ownerAddress=${query}&limit=50&offset=0`);
       
       if (!response.ok) {
@@ -139,10 +137,7 @@ const ExplorerPage = () => {
       }
       
       const data = await response.json();
-      console.log(`[FRONTEND] API_RESPONSE time=${Date.now()-searchStart}ms assets=${data.data?.length||0} total=${data.pagination?.total||0}`);
       
-      // console.log('[EXPLORER DEBUG] API Response:', data);
-      // console.log('[EXPLORER DEBUG] First asset dispute data:', data.data?.[0]?.disputeData);
       
       if (data.data && data.data.length > 0) {
         const assets = data.data || [];
@@ -177,7 +172,6 @@ const ExplorerPage = () => {
       setTimeout(() => setSearchStatus(null), 3000);
     }
     finally {
-      console.log(`[FRONTEND] SEARCH_COMPLETE time=${Date.now()-searchStart}ms`);
       setIsLoading(false);
     }
   };
@@ -257,7 +251,7 @@ const ExplorerPage = () => {
                   <CardSkeleton key={index} />
                 ))}
               </StaggeredSkeleton>
-            </div>
+                </div>
             </div>
         )}
         

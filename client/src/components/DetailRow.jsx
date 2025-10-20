@@ -1,6 +1,4 @@
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
-
+import React from 'react';
 
 const DetailRow = ({ label, value, isLink = false }) => {
   // Hanya tampilkan jika value valid dan bukan 0 (kecuali explicitly 0)

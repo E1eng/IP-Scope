@@ -1,6 +1,4 @@
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
-
+import React from 'react';
 
 // Komponen utilitas untuk render SVG Icons
 const Icons = ({ type }) => {

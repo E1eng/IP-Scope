@@ -395,13 +395,6 @@ const RemixDetailModalContent = ({ asset, onClose, isLoading }) => {
   const [totalDescendants, setTotalDescendants] = useState(asset?.descendantsCount || null);
         const [loadingChildren, setLoadingChildren] = useState(false); // No loading needed
 
-  // DEBUG: Log asset data to see what we're receiving
-  // console.log('[MODAL DEBUG] Asset prop received:', {
-  //   title: asset?.title,
-  //   creator: asset?.creator,
-  //   ipId: asset?.ipId,
-  //   fullAsset: asset
-  // });
 
   useEffect(() => {
     setActiveTab('details');
@@ -478,35 +471,23 @@ const RemixDetailModalContent = ({ asset, onClose, isLoading }) => {
       };
     }
     
-    // console.log('[MODAL DEBUG] currentAsset recalculated:', {
-    //   hasDetail: !!detail,
-    //   hasAsset: !!asset,
-    //   title: result?.title,
-    //   creator: result?.creator,
-    //   mediaType: result?.mediaType,
-    //   nftMetadata: result?.nftMetadata ? 'exists' : 'missing',
-    //   merged: detail && asset ? 'yes' : 'no'
-    // });
     return result;
   }, [detail, asset]);
   
   // Calculate derived values that depend on currentAsset
   const formattedDate = useMemo(() => {
     const result = currentAsset?.createdAt ? new Date(currentAsset.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Not Provided';
-    // console.log('[MODAL DEBUG] formattedDate recalculated:', result);
     return result;
   }, [currentAsset]);
   
   const creatorName = useMemo(() => {
     const result = asset?.creator || currentAsset?.creator || currentAsset?.nftMetadata?.raw?.metadata?.creators?.[0]?.name || 'Not Provided';
-    // console.log('[MODAL DEBUG] creatorName recalculated:', result);
     return result;
   }, [currentAsset, asset]);
   // Determine media type with better fallback logic
   const mediaTypeDisplay = useMemo(() => {
     // First try: nftMetadata.raw.metadata.mediaType
     if (currentAsset?.nftMetadata?.raw?.metadata?.mediaType) {
-      // console.log('[MODAL DEBUG] mediaType from nftMetadata.raw.metadata:', currentAsset.nftMetadata.raw.metadata.mediaType);
       return currentAsset.nftMetadata.raw.metadata.mediaType;
     }
     
@@ -514,22 +495,18 @@ const RemixDetailModalContent = ({ asset, onClose, isLoading }) => {
     if (currentAsset?.nftMetadata?.image?.contentType) {
       const contentType = currentAsset.nftMetadata.image.contentType.toLowerCase();
       if (contentType.startsWith('image/')) {
-        // console.log('[MODAL DEBUG] mediaType from contentType: IMAGE');
         return 'IMAGE';
       }
       if (contentType.startsWith('video/')) {
-        // console.log('[MODAL DEBUG] mediaType from contentType: VIDEO');
         return 'VIDEO';
       }
       if (contentType.startsWith('audio/')) {
-        // console.log('[MODAL DEBUG] mediaType from contentType: AUDIO');
         return 'AUDIO';
       }
     }
     
     // Third try: currentAsset.mediaType
     if (currentAsset?.mediaType && currentAsset.mediaType !== 'UNKNOWN') {
-      // console.log('[MODAL DEBUG] mediaType from currentAsset.mediaType:', currentAsset.mediaType);
       return currentAsset.mediaType;
     }
     
@@ -541,20 +518,16 @@ const RemixDetailModalContent = ({ asset, onClose, isLoading }) => {
     if (imageUrl) {
       const extension = imageUrl.split('.').pop()?.toLowerCase();
       if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(extension)) {
-        // console.log('[MODAL DEBUG] mediaType from extension: IMAGE');
         return 'IMAGE';
       }
       if (['mp4', 'webm', 'mov', 'avi'].includes(extension)) {
-        // console.log('[MODAL DEBUG] mediaType from extension: VIDEO');
         return 'VIDEO';
       }
       if (['mp3', 'wav', 'ogg', 'm4a'].includes(extension)) {
-        // console.log('[MODAL DEBUG] mediaType from extension: AUDIO');
         return 'AUDIO';
       }
     }
     
-    // console.log('[MODAL DEBUG] mediaType: Not Specified');
     return 'Not Specified';
   }, [currentAsset]);
   // UI/UX: Rombak tampilan agar sesuai untuk halaman penuh.

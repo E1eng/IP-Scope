@@ -83,7 +83,6 @@ const WalletFilterForm = ({ onFetch, initialOwnerAddress, isSubmitting }) => {
         const cleanedAddress = addressInput.trim();
         const timestamp = new Date().toISOString();
 
-        console.log(`[FRONTEND] BUTTON_CLICK timestamp=${timestamp} address=${cleanedAddress}`);
         
         if (!cleanedAddress) return;
 

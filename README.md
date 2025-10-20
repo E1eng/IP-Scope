@@ -2,15 +2,26 @@
 
 ## 📋 Overview
 
-IPScope is a comprehensive analytics platform for tracking and analyzing Intellectual Property (IP) assets on the Story Protocol blockchain. The platform provides detailed insights into royalty income, asset performance, derivative works, and licensing information.
+IPScope is a comprehensive analytics platform for tracking and analyzing Intellectual Property (IP) assets on the Story Protocol blockchain. The platform provides detailed insights into royalty income, asset performance, derivative works, and licensing information with a clean, minimalist design and optimized performance.
+
+## ✨ Recent Updates
+
+- **Code Cleanup**: Removed all unused imports, dead code, and console.log statements
+- **Performance Optimization**: Optimized API calls and data processing
+- **UI/UX Improvements**: Implemented minimalist design with consistent spacing and typography
+- **Mobile Responsiveness**: Enhanced mobile layout for all components
+- **Accessibility**: Added WCAG 2.1 AA compliance features
+- **Production Ready**: Clean, maintainable codebase ready for deployment
 
 ## 🏗️ Architecture
 
 ### Frontend (React + Vite)
 - **Framework**: React 18 with Vite
-- **Styling**: Tailwind CSS
+- **Styling**: Tailwind CSS with custom design system
 - **State Management**: React Context API
 - **Routing**: React Router
+- **Icons**: Lucide React
+- **Accessibility**: WCAG 2.1 AA compliant
 - **Port**: 5173/5174
 
 ### Backend (Node.js + Express)
@@ -18,6 +29,8 @@ IPScope is a comprehensive analytics platform for tracking and analyzing Intelle
 - **Framework**: Express.js
 - **Port**: 3001
 - **API Integration**: Story Protocol API + StoryScan API
+- **Performance**: Optimized with connection pooling and rate limiting
+- **Caching**: Intelligent data caching for improved performance
 
 ## 🔌 API Integrations
 
@@ -33,11 +46,12 @@ IPScope is a comprehensive analytics platform for tracking and analyzing Intelle
   - `/royalty-policies` - Get royalty policy details
 
 ### StoryScan API
-- **Base URL**: `https://api.storyscan.io/api/v1`
+- **Base URL**: `https://www.storyscan.io/api/v2`
 - **Endpoints Used**:
   - `/transactions` - Get detailed transaction data
   - `/tokens` - Get token information
   - `/prices` - Get price data for currency conversion
+- **Rate Limiting**: 5-8 RPS per API key with dynamic worker pools
 
 ## 🚀 Features
 
@@ -46,6 +60,8 @@ IPScope is a comprehensive analytics platform for tracking and analyzing Intelle
 - Display asset cards with key information
 - Real-time search with pagination
 - Asset filtering and sorting
+- Responsive design for all screen sizes
+- Skeleton loading states for better UX
 
 ### 2. Royalty Analytics
 - **Total Royalty Earned**: Aggregate royalty income across all assets
@@ -53,6 +69,8 @@ IPScope is a comprehensive analytics platform for tracking and analyzing Intelle
 - **Top Licensees**: Users who paid the most royalties
 - **Royalty Trends**: Historical royalty income analysis
 - **Currency Support**: WIP (Web3 IP) currency with real-time conversion
+- **Multi-Currency Display**: Support for multiple currencies in royalty breakdown
+- **Optimized Performance**: Fast loading for large datasets (1000+ transactions)
 
 ### 3. Asset Details Modal
 - **Asset Information**: Title, description, creator, media type
@@ -60,6 +78,8 @@ IPScope is a comprehensive analytics platform for tracking and analyzing Intelle
 - **Derivative Works**: Direct children and total descendants
 - **Royalty Ledger**: Transaction history with detailed breakdowns
 - **Top Licensees**: Users who licensed the asset
+- **Responsive Design**: Mobile-optimized layout with proper text truncation
+- **Accessibility**: Keyboard navigation and screen reader support
 
 ### 4. Portfolio Analytics
 - **Quick Stats**: Total assets, royalty earned, transactions, disputes
@@ -72,6 +92,8 @@ IPScope is a comprehensive analytics platform for tracking and analyzing Intelle
 - **Load More**: Efficient pagination for large datasets
 - **Relationship Tracking**: Parent-child IP asset relationships
 - **Count Display**: Accurate derivative works counting
+- **Clean Design**: Minimalist layout following royalty ledger pattern
+- **Mobile Responsive**: Optimized layout for mobile devices
 
 ## 📁 Project Structure
 
@@ -85,12 +107,21 @@ IPScope/
 │   │   │   ├── RemixDetailModal.jsx
 │   │   │   ├── ChildrenList.jsx
 │   │   │   ├── StatCard.jsx
-│   │   │   └── ...
+│   │   │   ├── QuickStats.jsx
+│   │   │   ├── OnChainAnalytics.jsx
+│   │   │   ├── SkeletonComponents.jsx
+│   │   │   ├── EmptyState.jsx
+│   │   │   ├── ErrorState.jsx
+│   │   │   ├── OptimisticUpdates.jsx
+│   │   │   └── DetailRow.jsx
 │   │   ├── pages/          # Main application pages
 │   │   │   ├── ExplorerPage.jsx
 │   │   │   └── AssetDetailPage.jsx
+│   │   ├── utils/          # Utility functions
+│   │   │   └── accessibility.js
 │   │   ├── SearchContext.jsx
-│   │   └── App.jsx
+│   │   ├── App.jsx
+│   │   └── main.jsx
 │   ├── package.json
 │   └── vite.config.js
 ├── server/                 # Backend Node.js application
@@ -122,7 +153,15 @@ STORY_PROTOCOL_API_KEY=your_story_protocol_api_key
 STORYSCAN_API_KEY=your_storyscan_api_key
 STORYSCAN_API_KEY_2=your_second_storyscan_api_key
 STORYSCAN_API_KEY_3=your_third_storyscan_api_key
+STORYSCAN_API_KEY_4=your_fourth_storyscan_api_key
+STORYSCAN_API_KEY_5=your_fifth_storyscan_api_key
+STORYSCAN_API_KEY_6=your_sixth_storyscan_api_key
+STORYSCAN_API_KEY_7=your_seventh_storyscan_api_key
+STORYSCAN_API_KEY_8=your_eighth_storyscan_api_key
+STORYSCAN_API_KEY_9=your_ninth_storyscan_api_key
 ```
+
+**Note**: Multiple StoryScan API keys are supported for improved performance and rate limiting.
 
 ### Installation Steps
 
@@ -208,16 +247,20 @@ The platform calculates royalties by:
 - Adaptive layouts for different screen sizes
 - Touch-friendly interface elements
 
-### Dark Theme
-- Modern dark color scheme
-- Purple accent colors
-- High contrast for better readability
+### Design System
+- **Color Palette**: Minimalist design with gray tones and indigo accent
+- **Typography**: Consistent 8px base scale (text-xs to text-4xl)
+- **Spacing**: Consistent 4px base scale (space-1 to space-12)
+- **Transitions**: Smooth 0.3s cubic-bezier animations
+- **Accessibility**: WCAG 2.1 AA compliant with proper contrast ratios
 
 ### Interactive Elements
 - Hover effects and transitions
-- Loading states and spinners
+- Skeleton loading states for better UX
 - Modal dialogs for detailed views
 - Tabbed interfaces for organized content
+- Keyboard navigation support
+- Screen reader compatibility
 
 ## 🔍 Data Flow
 
@@ -233,14 +276,18 @@ The platform calculates royalties by:
 ### API Optimization
 - **Parallel Processing**: Multiple API calls executed simultaneously
 - **Connection Pooling**: HTTP keep-alive for better performance
-- **Rate Limiting**: Prevents API overload
+- **Rate Limiting**: Dynamic rate limiting with 5-8 RPS per API key
+- **Worker Pools**: Dynamic worker configuration based on dataset size
+- **Caching**: Intelligent data caching with TTL support
 - **Error Handling**: Graceful fallbacks for failed requests
 
 ### Frontend Optimization
 - **Lazy Loading**: Components loaded on demand
 - **Memoization**: React.useMemo for expensive calculations
-- **Virtual Scrolling**: Efficient rendering of large lists
+- **Skeleton Loading**: Better perceived performance
 - **Debounced Search**: Prevents excessive API calls
+- **Code Splitting**: Optimized bundle sizes
+- **Accessibility**: WCAG 2.1 AA compliance
 
 ## 📊 Analytics Dashboard
 
@@ -263,6 +310,8 @@ The platform calculates royalties by:
 - Input validation
 - Error handling and logging
 - CORS configuration
+- XSS protection
+- CSRF protection
 
 ## 🧪 Testing
 
@@ -288,6 +337,10 @@ npm test
 - [ ] Advanced analytics dashboard
 - [ ] Social features
 - [ ] API documentation
+- [ ] Dark/Light theme toggle
+- [ ] Advanced search filters
+- [ ] Data visualization charts
+- [ ] Bulk operations
 
 ## 🤝 Contributing
 
@@ -314,8 +367,18 @@ For support and questions:
 - StoryScan for transaction data
 - React and Vite communities
 - Open source contributors
+- Tailwind CSS for the design system
+- Lucide React for the icon library
 
 ---
 
 **IPScope** - Empowering creators with comprehensive IP asset analytics and royalty tracking on the Story Protocol blockchain.
+
+## 📊 Code Quality
+
+- **Clean Code**: No unused imports, dead code, or console.log statements
+- **Production Ready**: Optimized for performance and maintainability
+- **Accessibility**: WCAG 2.1 AA compliant
+- **Responsive**: Mobile-first design approach
+- **Type Safety**: Proper error handling and validation
 

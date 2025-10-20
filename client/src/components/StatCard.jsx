@@ -39,10 +39,11 @@ function StatCard({ title, value, isWarning = false, icon, isLoading = false, er
     const isError = error || value === 'Error' || value === 'N/A';
     
     return (
-        <div className={`stat-card border-gray-700/50 group animate-scale-in`}>
+        <div className={`card-futuristic card-futuristic-hover group animate-scale-in`}>
             <div className="flex justify-between items-start mb-4">
                 <div className="flex items-center space-x-2">
-                    <p className="text-sm font-semibold text-gray-400 uppercase tracking-wider">{title}</p>
+                    <div className="w-2 h-2 bg-cyan-400 rounded-full animate-pulse"></div>
+                    <p className="text-sm font-semibold text-futuristic-secondary uppercase tracking-wider">{title}</p>
                 </div>
                 {icon && <div className="opacity-80 group-hover:opacity-100 transition-opacity duration-300">{icon}</div>}
             </div>
@@ -55,24 +56,24 @@ function StatCard({ title, value, isWarning = false, icon, isLoading = false, er
                 ) : (
                     <>
                         <div className="flex items-baseline space-x-2">
-                          <p className={`text-4xl font-extrabold text-gray-100`}>
+                          <p className={`text-4xl font-extrabold text-futuristic`}>
                               {value}
                           </p>
                           {isError && (value === 'N/A' || value === 'Error') && (
-                              <p className="text-sm text-gray-500">No data available</p>
+                              <p className="text-sm text-futuristic-muted">No data available</p>
                           )}
                         </div>
                         
                         {/* Optional progress bar */}
                         {typeof progressPercent === 'number' && progressPercent >= 0 && progressPercent < 100 && (
                             <div className="space-y-2">
-                                <div className="flex justify-between text-xs text-gray-400">
+                                <div className="flex justify-between text-xs text-futuristic-muted">
                                   <span>Progress</span>
                                   <span>{progressPercent}%</span>
                                 </div>
                                 <div className="h-2 bg-gray-800/70 rounded-full overflow-hidden">
                                     <div 
-                                      className="h-full bg-gray-300 rounded-full transition-all duration-500 ease-out" 
+                                      className="h-full bg-cyan-500 rounded-full transition-all duration-500 ease-out" 
                                       style={{ width: `${progressPercent}%` }} 
                                     />
                                 </div>
@@ -84,8 +85,8 @@ function StatCard({ title, value, isWarning = false, icon, isLoading = false, er
             
             {/* Loading indicator overlay */}
             {isLoading && (
-                <div className="absolute inset-0 bg-gray-900/50 rounded-xl flex items-center justify-center">
-                    <div className="animate-spin h-6 w-6 border-2 border-gray-300 border-t-transparent rounded-full"></div>
+                <div className="absolute inset-0 bg-gray-900/50 backdrop-blur-sm rounded-xl flex items-center justify-center">
+                    <div className="loading-spinner w-6 h-6"></div>
                 </div>
             )}
         </div>

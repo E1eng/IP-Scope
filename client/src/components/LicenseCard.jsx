@@ -49,38 +49,24 @@ const LicenseCard = ({ asset }) => {
   const royaltyRateValue = hasRoyaltyPolicy ? 1 : 0;
   
   return (
-  <div className="bg-gray-800/50 rounded-lg p-4 mb-4 border border-gray-700/50">
-      <h4 className="font-semibold text-lg mb-3 text-purple-300">
-        📋 License Summary
+  <div className="bg-gray-800/30 rounded-lg p-4 mb-4 border border-gray-700/30">
+      <h4 className="font-medium text-base mb-3 text-gray-200">
+        License Summary
       </h4>
       
-      {/* Key License Info - Enhanced with useful fields */}
-      <div className="space-y-3">
+      {/* Minimalist License Info - Only essential fields */}
+      <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <span className="text-gray-400 text-sm">License Type:</span>
-          <span className="text-white font-medium">{termName}</span>
+          <span className="text-gray-400 text-sm">Type:</span>
+          <span className="text-gray-200 font-medium text-sm">{termName}</span>
         </div>
-        
-        {pilTerms?.licenseTermsId && (
-          <div className="flex items-center justify-between">
-            <span className="text-gray-400 text-sm">Terms ID:</span>
-            <span className="text-blue-400 font-medium">{pilTerms.licenseTermsId}</span>
-          </div>
-        )}
-        
-        {pilTerms?.templateName && (
-          <div className="flex items-center justify-between">
-            <span className="text-gray-400 text-sm">Template:</span>
-            <span className="text-purple-400 font-medium">{pilTerms.templateName.toUpperCase()}</span>
-          </div>
-        )}
         
         {/* Commercial Use */}
         {pilTerms?.terms?.commercialUse !== undefined && (
           <div className="flex items-center justify-between">
-            <span className="text-gray-400 text-sm">Commercial Use:</span>
-            <span className={`font-medium ${pilTerms.terms.commercialUse ? 'text-green-400' : 'text-red-400'}`}>
-              {pilTerms.terms.commercialUse ? 'Allowed' : 'Not Allowed'}
+            <span className="text-gray-400 text-sm">Commercial:</span>
+            <span className={`font-medium text-sm ${pilTerms.terms.commercialUse ? 'text-green-400' : 'text-red-400'}`}>
+              {pilTerms.terms.commercialUse ? '✓' : '✗'}
             </span>
           </div>
         )}
@@ -89,79 +75,40 @@ const LicenseCard = ({ asset }) => {
         {pilTerms?.terms?.derivativesAllowed !== undefined && (
           <div className="flex items-center justify-between">
             <span className="text-gray-400 text-sm">Derivatives:</span>
-            <span className={`font-medium ${pilTerms.terms.derivativesAllowed ? 'text-green-400' : 'text-red-400'}`}>
-              {pilTerms.terms.derivativesAllowed ? 'Allowed' : 'Not Allowed'}
+            <span className={`font-medium text-sm ${pilTerms.terms.derivativesAllowed ? 'text-green-400' : 'text-red-400'}`}>
+              {pilTerms.terms.derivativesAllowed ? '✓' : '✗'}
             </span>
           </div>
         )}
         
-        {/* Transferable */}
+        {/* Commercial Rev Share - Always show if available */}
+        {pilTerms?.terms?.commercialRevShare !== undefined && (
+          <div className="flex items-center justify-between">
+            <span className="text-gray-400 text-sm">Rev Share:</span>
+            <span className="text-yellow-400 font-medium text-sm">
+              {pilTerms.terms.commercialRevShare > 0 
+                ? `${(pilTerms.terms.commercialRevShare / 1000000).toFixed(1)}%`
+                : '0%'
+              }
+            </span>
+          </div>
+        )}
+        
+        {/* Transferable - Always show if available */}
         {pilTerms?.terms?.transferable !== undefined && (
           <div className="flex items-center justify-between">
             <span className="text-gray-400 text-sm">Transferable:</span>
-            <span className={`font-medium ${pilTerms.terms.transferable ? 'text-green-400' : 'text-red-400'}`}>
-              {pilTerms.terms.transferable ? 'Yes' : 'No'}
+            <span className={`font-medium text-sm ${pilTerms.terms.transferable ? 'text-green-400' : 'text-red-400'}`}>
+              {pilTerms.terms.transferable ? '✓' : '✗'}
             </span>
           </div>
         )}
         
-        {/* Commercial Rev Share */}
-        {pilTerms?.terms?.commercialRevShare && (
-          <div className="flex items-center justify-between">
-            <span className="text-gray-400 text-sm">Commercial Rev Share:</span>
-            <span className="text-yellow-400 font-medium">{(pilTerms.terms.commercialRevShare / 1000000).toFixed(2)}%</span>
-          </div>
-        )}
-        
-        {/* Minting Fee */}
+        {/* Minting Fee - Only show if significant */}
         {pilTerms?.terms?.defaultMintingFee && pilTerms.terms.defaultMintingFee !== '0' && (
           <div className="flex items-center justify-between">
-            <span className="text-gray-400 text-sm">Minting Fee:</span>
-            <span className="text-orange-400 font-medium">{(parseInt(pilTerms.terms.defaultMintingFee) / Math.pow(10, 18)).toFixed(4)} IP</span>
-          </div>
-        )}
-        
-        {/* Royalty Policy */}
-        {pilTerms?.terms?.royaltyPolicy && pilTerms.terms.royaltyPolicy !== "0x0000000000000000000000000000000000000000" && (
-          <div className="flex items-center justify-between">
-            <span className="text-gray-400 text-sm">Royalty Policy:</span>
-            <span className="text-cyan-400 font-medium text-xs">{pilTerms.terms.royaltyPolicy.substring(0, 8)}...</span>
-          </div>
-        )}
-        
-        {/* Commercial Attribution */}
-        {pilTerms?.terms?.commercialAttribution !== undefined && (
-          <div className="flex items-center justify-between">
-            <span className="text-gray-400 text-sm">Attribution Required:</span>
-            <span className={`font-medium ${pilTerms.terms.commercialAttribution ? 'text-green-400' : 'text-red-400'}`}>
-              {pilTerms.terms.commercialAttribution ? 'Yes' : 'No'}
-            </span>
-          </div>
-        )}
-        
-        {/* Derivatives Attribution */}
-        {pilTerms?.terms?.derivativesAttribution !== undefined && (
-          <div className="flex items-center justify-between">
-            <span className="text-gray-400 text-sm">Derivative Attribution:</span>
-            <span className={`font-medium ${pilTerms.terms.derivativesAttribution ? 'text-green-400' : 'text-red-400'}`}>
-              {pilTerms.terms.derivativesAttribution ? 'Required' : 'Not Required'}
-            </span>
-          </div>
-        )}
-        
-        {/* Expiration */}
-        {pilTerms?.terms?.expiration && pilTerms.terms.expiration !== '0' && (
-          <div className="flex items-center justify-between">
-            <span className="text-gray-400 text-sm">Expiration:</span>
-            <span className="text-red-400 font-medium">{new Date(parseInt(pilTerms.terms.expiration) * 1000).toLocaleDateString()}</span>
-          </div>
-        )}
-        
-        {/* Created Date */}
-        {pilTerms?.createdAt && (
-          <div className="flex items-center justify-between">
-            <span className="text-gray-400 text-sm">Created:</span>
-            <span className="text-gray-300 font-medium">{new Date(pilTerms.createdAt).toLocaleDateString()}</span>
+            <span className="text-gray-400 text-sm">Fee:</span>
+            <span className="text-orange-400 font-medium text-sm">{(parseInt(pilTerms.terms.defaultMintingFee) / Math.pow(10, 18)).toFixed(2)} IP</span>
           </div>
         )}
       </div>

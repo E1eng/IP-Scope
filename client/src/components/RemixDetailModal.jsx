@@ -76,7 +76,7 @@ const CurrencyFlowDisplay = ({ asset }) => {
     if (isLoading) {
         return (
             <div className="bg-gray-800/50 rounded-lg p-4 mb-4 border border-gray-700/50">
-                <h3 className="font-semibold text-lg mb-3 text-purple-300">
+                <h3 className="font-medium text-base mb-3 text-gray-200">
                     💰 Royalty Flow
                 </h3>
                 <div className="text-center text-gray-400">Loading currency data...</div>
@@ -87,7 +87,7 @@ const CurrencyFlowDisplay = ({ asset }) => {
     if (!currencyData || Object.keys(currencyData).length === 0) {
         return (
             <div className="bg-gray-800/50 rounded-lg p-4 mb-4 border border-gray-700/50">
-                <h3 className="font-semibold text-lg mb-3 text-purple-300">
+                <h3 className="font-medium text-base mb-3 text-gray-200">
                     💰 Royalty Flow
                 </h3>
                 <div className="text-center text-gray-400">No royalty data available</div>
@@ -103,30 +103,16 @@ const CurrencyFlowDisplay = ({ asset }) => {
     });
 
     return (
-        <div className="bg-gray-800/50 rounded-lg p-4 mb-4 border border-gray-700/50">
-            <h3 className="font-semibold text-lg mb-3 text-purple-300">
-                💰 Royalty Flow
-            </h3>
-            <div className="space-y-3">
+        <div className="bg-gray-800/30 rounded-lg p-4 mb-4 border border-gray-700/30">
+            <h4 className="font-medium text-base mb-3 text-gray-200">
+                Royalty Flow
+            </h4>
+            
+            <div className="space-y-2">
                 {sortedCurrencies.map(([symbol, value]) => (
-                    <div key={symbol} className="flex items-center justify-between p-3 bg-gray-700/30 rounded-lg">
-                        <div className="flex items-center space-x-3">
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-sm ${
-                                symbol === 'WIP' ? 'bg-gradient-to-br from-yellow-500 to-orange-500' :
-                                symbol === 'IP' ? 'bg-gradient-to-br from-blue-500 to-purple-500' :
-                                'bg-gradient-to-br from-purple-500 to-blue-500'
-                            }`}>
-                                {symbol.charAt(0)}
-                            </div>
-                            <div>
-                                <span className="text-gray-300 font-medium">{symbol}</span>
-                                <div className="text-xs text-gray-400">Royalty Token</div>
-                            </div>
-                        </div>
-                        <div className="text-right">
-                            <span className="text-yellow-400 font-bold text-lg">{value}</span>
-                            <div className="text-xs text-gray-400">Total Earned</div>
-                        </div>
+                    <div key={symbol} className="flex items-center justify-between">
+                        <span className="text-gray-400 text-sm">{symbol}:</span>
+                        <span className="text-cyan-400 font-medium text-sm">{value}</span>
                     </div>
                 ))}
             </div>
@@ -201,61 +187,117 @@ const RoyaltyLedgerTab = ({ ipId }) => {
     const goPrev = () => setCurrentPage(p => Math.max(1, p - 1));
     const goNext = () => setCurrentPage(p => Math.min(totalPages, p + 1));
 
-   if (isLoading) return <div className="text-center p-6 text-purple-400">Loading Royalty Ledger...</div>;
-    if (error) return <div className="text-center p-6 text-red-400 bg-red-900/30 rounded-lg break-words">{error}</div>;
-    if (transactions.length === 0) return <div className="text-center p-6 text-gray-500">No royalty payment events found.</div>;
+   if (isLoading) return (
+        <div className="flex flex-col items-center justify-center p-8 space-y-4">
+            <div className="loading-wave">
+                <div></div><div></div><div></div><div></div><div></div>
+            </div>
+            <p className="text-gray-400 text-sm">Loading royalty transactions...</p>
+        </div>
+    );
+    
+    if (error) return (
+        <div className="flex flex-col items-center justify-center p-8 space-y-4">
+            <div className="w-16 h-16 rounded-full bg-red-900/20 flex items-center justify-center">
+                <span className="text-red-400 text-2xl">⚠️</span>
+            </div>
+            <p className="text-red-400 text-center break-words">{error}</p>
+        </div>
+    );
+    
+    if (transactions.length === 0) return (
+        <div className="flex flex-col items-center justify-center p-8 space-y-4">
+            <div className="w-16 h-16 rounded-full bg-gray-800/50 flex items-center justify-center">
+                <span className="text-gray-500 text-2xl">📊</span>
+            </div>
+            <p className="text-gray-500 text-center">No royalty transactions found</p>
+        </div>
+    );
 
     return (
-        <div className="space-y-3 text-sm">
-            {/* Header dengan total count */}
-            <div className="flex justify-between items-center mb-4 p-3 bg-gray-800/30 rounded-lg border border-gray-700/50">
-                <span className="text-purple-300 font-semibold">
-                    Showing {totalCount === 0 ? 0 : startIndex + 1}-{endIndex} of {totalCount} transactions
-                </span>
-                <span className="text-gray-400 text-sm">
-                    Total Royalty: {transactions.reduce((sum, tx) => {
-                        // Parse value string like "0.05 WIP" or "0.1 IP"
-                        const valueStr = tx.value || '0';
-                        const match = valueStr.match(/(\d+\.?\d*)/);
-                        return sum + (match ? parseFloat(match[1]) : 0);
-                    }, 0).toFixed(6)} WIP
-                </span>
-            </div>
-
-            {/* Progress bar removed per request */}
-            
-            {/* Transactions list */}
-            {visibleTransactions.map(tx => (
-                <div key={tx.txHash} className="p-3 bg-gray-800/50 rounded-lg border border-gray-700/50 hover:border-purple-600 transition-colors">
-                    <div className="flex justify-between items-center mb-1">
-                        <span className="font-mono text-sm text-green-400 font-bold">{tx.value}</span>
-                        <a href={`https://storyscan.io/tx/${tx.txHash}`} target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:text-purple-300 text-xs font-semibold flex items-center">
-                            View Tx &#x2197;
-                        </a>
-                    </div>
-                    <div className="flex justify-between items-center text-xs text-gray-400">
-                        {/* --- PERUBAHAN UTAMA DI SINI --- */}
-                        <span className="truncate max-w-[40%]">
-                            From: <span className="font-mono">
-                                {typeof tx.from === 'string' ? `${tx.from.substring(0, 8)}...` : 'N/A'}
-                            </span>
+        <div className="space-y-3">
+            {/* Minimalist Header - Same as License Summary */}
+            <div className="bg-gray-800/30 rounded-lg p-4 border border-gray-700/30">
+                <h4 className="font-medium text-base mb-3 text-gray-200">
+                    Royalty Ledger
+                </h4>
+                
+                <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                        <span className="text-gray-400 text-sm">Transactions:</span>
+                        <span className="text-gray-200 font-medium text-sm">
+                            {totalCount === 0 ? 0 : startIndex + 1}-{endIndex} of {totalCount}
                         </span>
-                        <span>{tx.timestamp}</span>
+                    </div>
+                    
+                    <div className="flex items-center justify-between">
+                        <span className="text-gray-400 text-sm">Total Collected:</span>
+                        <span className="text-cyan-400 font-medium text-sm">
+                            {transactions.reduce((sum, tx) => {
+                                const valueStr = tx.value || '0';
+                                const match = valueStr.match(/(\d+\.?\d*)/);
+                                return sum + (match ? parseFloat(match[1]) : 0);
+                            }, 0).toFixed(6)} WIP
+                        </span>
                     </div>
                 </div>
-            ))}
+            </div>
             
-            {/* Pagination Controls */}
+            {/* Minimalist Transaction List */}
+            <div className="space-y-2">
+                {visibleTransactions.map((tx, index) => (
+                    <div key={tx.txHash} className="bg-gray-800/30 rounded-lg p-3 border border-gray-700/30 hover:border-cyan-500/50 transition-colors">
+                        <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center space-x-2">
+                                <div className="w-6 h-6 rounded-full bg-cyan-500/20 flex items-center justify-center">
+                                    <span className="text-cyan-400 text-xs font-bold">{index + 1}</span>
+                                </div>
+                                <div>
+                                    <div className="text-cyan-400 font-mono text-sm font-bold">{tx.value}</div>
+                                    <div className="text-gray-400 text-xs">
+                                        {typeof tx.from === 'string' ? `${tx.from.substring(0, 6)}...${tx.from.substring(tx.from.length - 4)}` : 'N/A'}
+                                    </div>
+                                </div>
+                            </div>
+                            <a 
+                                href={`https://storyscan.io/tx/${tx.txHash}`} 
+                                target="_blank" 
+                                rel="noopener noreferrer" 
+                                className="text-cyan-400 hover:text-cyan-300 text-xs font-semibold"
+                            >
+                                View ↗
+                            </a>
+                        </div>
+                        <div className="flex items-center justify-between text-xs text-gray-500">
+                            <span className="font-mono">{tx.timestamp}</span>
+                            <div className="flex items-center space-x-1">
+                                <div className="w-1.5 h-1.5 bg-green-400 rounded-full"></div>
+                                <span>Confirmed</span>
+                            </div>
+                        </div>
+                    </div>
+                ))}
+            </div>
+            
+            {/* Minimalist Pagination */}
             {totalCount > pageSize && (
-                <div className="flex items-center justify-center gap-3 pt-4">
-                    <button onClick={goPrev} disabled={currentPage === 1} className="px-3 py-1 rounded bg-gray-800 text-gray-200 disabled:opacity-50">
-                        Prev
+                <div className="flex items-center justify-center space-x-3 pt-4">
+                    <button 
+                        onClick={goPrev} 
+                        disabled={currentPage === 1} 
+                        className="px-3 py-1.5 rounded-lg bg-gray-800/50 hover:bg-gray-700/50 text-gray-300 hover:text-cyan-400 border border-gray-600/50 hover:border-cyan-500/50 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 text-sm"
+                    >
+                        ← Prev
                     </button>
-                    <span className="text-gray-400 text-xs">
+                    <span className="text-gray-400 text-sm">
                         Page {currentPage} / {totalPages}
                     </span>
-                    <button onClick={goNext} disabled={currentPage === totalPages} className="px-3 py-1 rounded bg-gray-800 text-gray-200 disabled:opacity-50">
-                        Next
+                    <button 
+                        onClick={goNext} 
+                        disabled={currentPage === totalPages} 
+                        className="px-3 py-1.5 rounded-lg bg-gray-800/50 hover:bg-gray-700/50 text-gray-300 hover:text-cyan-400 border border-gray-600/50 hover:border-cyan-500/50 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 text-sm"
+                    >
+                        Next →
                     </button>
                 </div>
             )}
@@ -299,9 +341,15 @@ const TopLicenseesTab = ({ ipId }) => {
                         <span className={`text-lg font-extrabold ${index === 0 ? 'text-yellow-400' : index === 1 ? 'text-gray-400' : 'text-orange-400'}`}>
                             #{index + 1}
                         </span>
-                        <p className="font-mono text-gray-300 text-xs truncate max-w-[150px]" title={lic.address}>
-                            {lic.address.substring(0, 10)}...
-                        </p>
+                        <a 
+                            href={`https://explorer.story.foundation/ipa/${lic.address}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="font-mono text-blue-400 hover:text-blue-300 text-xs transition-colors break-all"
+                            title={`View ${lic.address} on Story Protocol Explorer`}
+                        >
+                            {lic.address}
+                        </a>
                     </div>
                     <div className="text-right">
                         <p className="font-bold text-sm text-green-400">{lic.totalValue || lic.totalValueFormatted}</p>
@@ -579,7 +627,7 @@ return (
                                                     href={currentAsset.uri}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
-                                                    className="text-gray-400 hover:text-gray-300 ml-2 transition-colors break-all"
+                                                    className="text-blue-400 hover:text-blue-300 ml-2 transition-colors break-all"
                                                     title="View on IPFS"
                                                 >
                                                     {currentAsset.uri}

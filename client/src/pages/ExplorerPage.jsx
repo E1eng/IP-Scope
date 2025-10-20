@@ -7,6 +7,53 @@ import StatCard from '../components/StatCard';
 import QuickStats from '../components/QuickStats';
 import axios from 'axios';
 
+// Helper untuk mendeteksi media type dengan fallback logic yang sama dengan modal
+const getMediaType = (asset) => {
+    // First try: nftMetadata.raw.metadata.mediaType
+    if (asset?.nftMetadata?.raw?.metadata?.mediaType) {
+        return asset.nftMetadata.raw.metadata.mediaType;
+    }
+    
+    // Second try: nftMetadata.image.contentType
+    if (asset?.nftMetadata?.image?.contentType) {
+        const contentType = asset.nftMetadata.image.contentType.toLowerCase();
+        if (contentType.startsWith('image/')) {
+            return 'IMAGE';
+        }
+        if (contentType.startsWith('video/')) {
+            return 'VIDEO';
+        }
+        if (contentType.startsWith('audio/')) {
+            return 'AUDIO';
+        }
+    }
+    
+    // Third try: asset.mediaType
+    if (asset?.mediaType && asset.mediaType !== 'UNKNOWN') {
+        return asset.mediaType;
+    }
+    
+    // Fourth try: determine from image URL extension
+    const imageUrl = asset?.nftMetadata?.image?.cachedUrl || 
+                    asset?.nftMetadata?.raw?.metadata?.image || 
+                    asset?.nftMetadata?.image?.originalUrl;
+    
+    if (imageUrl) {
+        const extension = imageUrl.split('.').pop()?.toLowerCase();
+        if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(extension)) {
+            return 'IMAGE';
+        }
+        if (['mp4', 'webm', 'mov', 'avi'].includes(extension)) {
+            return 'VIDEO';
+        }
+        if (['mp3', 'wav', 'ogg', 'm4a'].includes(extension)) {
+            return 'AUDIO';
+        }
+    }
+    
+    return 'Not Specified';
+};
+
 
 const ExplorerPage = () => {
   const {
@@ -99,7 +146,7 @@ const ExplorerPage = () => {
           offset: 0
         });
       } else {
-            updateSearchState({
+                     updateSearchState({
                 results: [],
                 totalResults: 0,
           offset: 0
@@ -264,14 +311,12 @@ const ExplorerPage = () => {
                         {/* Metadata Grid */}
                         <div className="grid grid-cols-2 gap-2 text-xs">
                           {/* Media Type */}
-                          {(asset.mediaType || asset.nftMetadata?.raw?.metadata?.mediaType) && (
-                            <div className="flex items-center space-x-1">
-                              <span className="text-gray-500">Type:</span>
-                              <span className="text-purple-400 truncate">
-                                {asset.mediaType || asset.nftMetadata?.raw?.metadata?.mediaType}
-                              </span>
-                        </div>
-                    )}
+                          <div className="flex items-center space-x-1">
+                            <span className="text-gray-500">Type:</span>
+                            <span className="text-purple-400 truncate">
+                              {getMediaType(asset)}
+                            </span>
+                          </div>
         
                             {/* Dispute Status Badge (show None if absent) */}
                             <div className="flex items-center space-x-1">

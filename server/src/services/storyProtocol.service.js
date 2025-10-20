@@ -1176,68 +1176,101 @@ const processTxHashesWithWorkerPool = async (
 ) => {
     if (!Array.isArray(txHashes) || txHashes.length === 0) return [];
 
+    // Dynamic configuration based on dataset size
+    const totalTxHashes = txHashes.length;
+    let optimizedConfig = { pageSize, workerCount, perWorkerIntervalMs, timeoutMs };
+    
+    // Count available API keys
+    const availableKeys = Object.keys(process.env)
+        .filter(k => k === 'STORYSCAN_API_KEY' || k.startsWith('STORYSCAN_API_KEY_'))
+        .map(k => process.env[k])
+        .filter(v => v && v.trim().length > 0).length;
+    
+    const maxWorkers = availableKeys * 8; // 8 workers per API key (aggressive)
+    
+    if (totalTxHashes > 500) {
+        // Large dataset optimization - use all available workers
+        optimizedConfig = {
+            pageSize: 100,           // Larger pages for efficiency
+            workerCount: Math.min(maxWorkers, totalTxHashes), // Use all available workers
+            perWorkerIntervalMs: 100,  // Slower to avoid rate limiting with 8 workers per key
+            timeoutMs: 10000         // Longer timeout for large datasets
+        };
+    } else if (totalTxHashes > 100) {
+        // Medium dataset optimization
+        optimizedConfig = {
+            pageSize: 75,
+            workerCount: Math.min(Math.max(16, maxWorkers * 0.8), totalTxHashes), // Use 80% of available workers
+            perWorkerIntervalMs: 120,  // Slower to avoid rate limiting
+            timeoutMs: 9000
+        };
+    } else {
+        // Small dataset - use all available workers
+        optimizedConfig = {
+            pageSize: 50,
+            workerCount: Math.min(maxWorkers, totalTxHashes),
+            perWorkerIntervalMs: 150,  // Slower to avoid rate limiting
+            timeoutMs: 8000
+        };
+    }
+
     const results = [];
     const DEBUG_ROYALTY_FLOW = process.env.DEBUG_ROYALTY_FLOW === '1';
     const startTime = DEBUG_ROYALTY_FLOW ? Date.now() : 0;
-    if (DEBUG_ROYALTY_FLOW) console.log(`[ROYALTY] WORKER_START total=${txHashes.length} workers=${workerCount} interval=${perWorkerIntervalMs}ms timeout=${timeoutMs}ms`);
+    console.log(`[ROYALTY] WORKER_START total=${totalTxHashes} workers=${optimizedConfig.workerCount} interval=${optimizedConfig.perWorkerIntervalMs}ms timeout=${optimizedConfig.timeoutMs}ms pageSize=${optimizedConfig.pageSize} apiKeys=${availableKeys} maxWorkers=${maxWorkers}`);
 
-    // Process in pages of 50 for stability
-    for (let pageStart = 0; pageStart < txHashes.length; pageStart += pageSize) {
-        const page = txHashes.slice(pageStart, pageStart + pageSize);
-        if (DEBUG_ROYALTY_FLOW) console.log(`[ROYALTY] WORK_PAGE start=${pageStart} size=${page.length} workers=${Math.min(workerCount, page.length)}`);
-        const pageStartTime = DEBUG_ROYALTY_FLOW ? Date.now() : 0;
-
-        // Simple FIFO queue for this page
-        const queue = page.slice();
-        let active = 0;
-        let stopped = false;
-
-        const runWorker = async () => {
-            while (!stopped) {
-                const txHash = queue.shift();
-                if (!txHash) break;
-
-                const txStartTime = DEBUG_ROYALTY_FLOW ? Date.now() : 0;
+    // Process all txHashes in parallel with controlled concurrency
+    console.log(`[ROYALTY] PROCESSING_ALL_TX total=${txHashes.length} concurrency=${optimizedConfig.workerCount}`);
+    
+    const processTxHash = async (txHash, index) => {
+        const txStartTime = DEBUG_ROYALTY_FLOW ? Date.now() : 0;
+        try {
+            // Check cache first
+            const cached = getTxDetailCache(txHash);
+            if (cached) {
+                if (DEBUG_ROYALTY_FLOW) console.log(`[ROYALTY] HIT_CACHE tx=${txHash.substring(0,10)} in ${Date.now()-txStartTime}ms`);
+                return { txHash, detail: cached };
+            } else {
+                const controller = new AbortController();
+                const timeout = setTimeout(() => controller.abort(), optimizedConfig.timeoutMs);
                 try {
-                    // Check cache first
-                    const cached = getTxDetailCache(txHash);
-                    if (cached) {
-                        results.push({ txHash, detail: cached });
-                        if (DEBUG_ROYALTY_FLOW) console.log(`[ROYALTY] HIT_CACHE tx=${txHash.substring(0,10)} in ${Date.now()-txStartTime}ms`);
-                    } else {
-                        const controller = new AbortController();
-                        const timeout = setTimeout(() => controller.abort(), timeoutMs);
-                        try {
-                            const detail = await fetchTransactionDetailFromStoryScan(txHash, { signal: controller.signal });
-                            setTxDetailCache(txHash, detail);
-                            results.push({ txHash, detail });
-                            if (DEBUG_ROYALTY_FLOW) console.log(`[ROYALTY] OK tx=${txHash.substring(0,10)} in ${Date.now()-txStartTime}ms`);
-                        } catch (e) {
-                            results.push({ txHash, detail: { amount: 0n, decimals: 18, symbol: 'ETH', tokenAddress: null, exchangeRateUsd: null, from: null } });
-                            if (DEBUG_ROYALTY_FLOW) console.log(`[ROYALTY] FAIL tx=${txHash.substring(0,10)} in ${Date.now()-txStartTime}ms err=${e?.message || 'unknown'}`);
-                        } finally {
-                            clearTimeout(timeout);
-                        }
-                    }
+                    const detail = await fetchTransactionDetailFromStoryScan(txHash, { signal: controller.signal });
+                    setTxDetailCache(txHash, detail);
+                    if (DEBUG_ROYALTY_FLOW) console.log(`[ROYALTY] OK tx=${txHash.substring(0,10)} in ${Date.now()-txStartTime}ms`);
+                    return { txHash, detail };
+                } catch (e) {
+                    if (DEBUG_ROYALTY_FLOW) console.log(`[ROYALTY] FAIL tx=${txHash.substring(0,10)} in ${Date.now()-txStartTime}ms err=${e?.message || 'unknown'}`);
+                    return { txHash, detail: { amount: 0n, decimals: 18, symbol: 'ETH', tokenAddress: null, exchangeRateUsd: null, from: null } };
                 } finally {
-                    // Pace this worker to ~1 task/sec
-                    await sleep(perWorkerIntervalMs);
+                    clearTimeout(timeout);
                 }
             }
-        };
-
-        // Launch up to workerCount workers for this page
-        const workersToLaunch = Math.min(workerCount, queue.length);
-        const workerPromises = [];
-        for (let i = 0; i < workersToLaunch; i++) {
-            active += 1;
-            workerPromises.push(
-                runWorker().catch(() => {})
-            );
+        } catch (e) {
+            if (DEBUG_ROYALTY_FLOW) console.log(`[ROYALTY] ERROR tx=${txHash.substring(0,10)} in ${Date.now()-txStartTime}ms err=${e?.message || 'unknown'}`);
+            return { txHash, detail: { amount: 0n, decimals: 18, symbol: 'ETH', tokenAddress: null, exchangeRateUsd: null, from: null } };
         }
+    };
 
-        await Promise.all(workerPromises);
-        if (DEBUG_ROYALTY_FLOW) console.log(`[ROYALTY] WORK_PAGE_DONE start=${pageStart} accumulated=${results.length} pageTime=${Date.now()-pageStartTime}ms`);
+    // Process in batches with controlled concurrency
+    const batchSize = optimizedConfig.workerCount;
+    for (let i = 0; i < txHashes.length; i += batchSize) {
+        const batch = txHashes.slice(i, i + batchSize);
+        console.log(`[ROYALTY] BATCH_START start=${i} size=${batch.length} concurrency=${batch.length}`);
+        const batchStartTime = Date.now();
+        
+        const batchPromises = batch.map((txHash, batchIndex) => 
+            processTxHash(txHash, i + batchIndex)
+        );
+        
+        const batchResults = await Promise.all(batchPromises);
+        results.push(...batchResults);
+        
+        console.log(`[ROYALTY] BATCH_DONE start=${i} size=${batch.length} results=${batchResults.length} batchTime=${Date.now()-batchStartTime}ms totalResults=${results.length}`);
+        
+        // Small delay between batches to avoid overwhelming the API
+        if (i + batchSize < txHashes.length) {
+            await sleep(100);
+        }
     }
 
     if (DEBUG_ROYALTY_FLOW) console.log(`[ROYALTY] WORKER_COMPLETE total=${results.length} totalTime=${Date.now()-startTime}ms`);
@@ -1470,25 +1503,10 @@ const getAssetsByOwner = async (ownerAddress, limit = 200, offset = 0, tokenCont
         if (data && data.length > 0) {
             console.log(`[SERVICE] STARTING_BATCH_ROYALTY_PROCESSING assets=${data.length}`);
             try {
-                // Pre-filter assets that might have royalty (check first page of events)
-                console.log(`[SERVICE] PRE_FILTERING_ASSETS assets=${data.length}`);
-                const assetsWithRoyalty = [];
-                const assetsWithoutRoyalty = [];
-                
-                // Quick check for each asset (first page only)
-                for (const asset of data) {
-                    try {
-                        const hasEvents = await quickCheckRoyaltyEvents(asset.ipId);
-                        if (hasEvents) {
-                            assetsWithRoyalty.push(asset);
-                        } else {
-                            assetsWithoutRoyalty.push(asset);
-                        }
-                    } catch (e) {
-                        // If check fails, assume no royalty
-                        assetsWithoutRoyalty.push(asset);
-                    }
-                }
+                // Skip pre-filtering for now - process all assets with batch processing
+                console.log(`[SERVICE] SKIPPING_PRE_FILTER assets=${data.length} - using batch processing for all`);
+                const assetsWithRoyalty = data; // Process all assets
+                const assetsWithoutRoyalty = []; // No assets to skip
                 
                 console.log(`[SERVICE] PRE_FILTER_RESULT withRoyalty=${assetsWithRoyalty.length} withoutRoyalty=${assetsWithoutRoyalty.length}`);
                 
@@ -1498,25 +1516,16 @@ const getAssetsByOwner = async (ownerAddress, limit = 200, offset = 0, tokenCont
                     asset.analytics = { totalRoyaltiesPaid: {} };
                 }
                 
-                // Process only assets with royalty in batches
+                // Process all assets with single optimized worker pool
                 if (assetsWithRoyalty.length > 0) {
-                    const batchSize = 5; // Process 5 assets at a time
-                    const batches = [];
-                    for (let i = 0; i < assetsWithRoyalty.length; i += batchSize) {
-                        batches.push(assetsWithRoyalty.slice(i, i + batchSize));
-                    }
+                    console.log(`[SERVICE] PROCESSING_ALL_ASSETS assets=${assetsWithRoyalty.length} with single worker pool`);
                     
-                    console.log(`[SERVICE] ROYALTY_BATCHES=${batches.length} batchSize=${batchSize} assetsWithRoyalty=${assetsWithRoyalty.length}`);
-                    
-                    for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
-                    const batch = batches[batchIndex];
-                    console.log(`[SERVICE] PROCESSING_ROYALTY_BATCH ${batchIndex+1}/${batches.length} assets=${batch.length}`);
-                    
-                    // Process batch in parallel
-                    const batchPromises = batch.map(async (asset, assetIndex) => {
+                    // Process all assets in parallel with single worker pool
+                    const assetPromises = assetsWithRoyalty.map(async (asset, assetIndex) => {
                         try {
+                            console.log(`[SERVICE] CALLING_ROYALTY_API asset=${assetIndex+1}/${assetsWithRoyalty.length} ipId=${asset.ipId}`);
                             const { totalRoyaltiesByToken } = await getAndAggregateRoyaltyEventsFromApi(asset.ipId);
-                            console.log(`[SERVICE] ROYALTY_COMPLETE batch=${batchIndex+1} asset=${assetIndex+1} ipId=${asset.ipId}`);
+                            console.log(`[SERVICE] ROYALTY_COMPLETE asset=${assetIndex+1}/${assetsWithRoyalty.length} ipId=${asset.ipId}`);
                         
                         // Initialize analytics object
                         asset.analytics = asset.analytics || {};
@@ -1559,10 +1568,9 @@ const getAssetsByOwner = async (ownerAddress, limit = 200, offset = 0, tokenCont
                         }
                     });
                     
-                        // Wait for batch to complete
-                        await Promise.all(batchPromises);
-                        console.log(`[SERVICE] ROYALTY_BATCH_COMPLETE ${batchIndex+1}/${batches.length}`);
-                    }
+                    // Wait for all assets to complete
+                    await Promise.all(assetPromises);
+                    console.log(`[SERVICE] ALL_ASSETS_COMPLETE assets=${assetsWithRoyalty.length}`);
                 }
             } catch (e) {
                 console.error('[SERVICE] Error processing royalty data:', e.message);

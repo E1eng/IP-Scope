@@ -21,6 +21,53 @@ const getImageUrl = (asset) => {
     return "/favicon.png"; 
 };
 
+// Helper untuk mendeteksi media type dengan fallback logic yang sama dengan modal
+const getMediaType = (asset) => {
+    // First try: nftMetadata.raw.metadata.mediaType
+    if (asset?.nftMetadata?.raw?.metadata?.mediaType) {
+        return asset.nftMetadata.raw.metadata.mediaType;
+    }
+    
+    // Second try: nftMetadata.image.contentType
+    if (asset?.nftMetadata?.image?.contentType) {
+        const contentType = asset.nftMetadata.image.contentType.toLowerCase();
+        if (contentType.startsWith('image/')) {
+            return 'IMAGE';
+        }
+        if (contentType.startsWith('video/')) {
+            return 'VIDEO';
+        }
+        if (contentType.startsWith('audio/')) {
+            return 'AUDIO';
+        }
+    }
+    
+    // Third try: asset.mediaType
+    if (asset?.mediaType && asset.mediaType !== 'UNKNOWN') {
+        return asset.mediaType;
+    }
+    
+    // Fourth try: determine from image URL extension
+    const imageUrl = asset?.nftMetadata?.image?.cachedUrl || 
+                    asset?.nftMetadata?.raw?.metadata?.image || 
+                    asset?.nftMetadata?.image?.originalUrl;
+    
+    if (imageUrl) {
+        const extension = imageUrl.split('.').pop()?.toLowerCase();
+        if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(extension)) {
+            return 'IMAGE';
+        }
+        if (['mp4', 'webm', 'mov', 'avi'].includes(extension)) {
+            return 'VIDEO';
+        }
+        if (['mp3', 'wav', 'ogg', 'm4a'].includes(extension)) {
+            return 'AUDIO';
+        }
+    }
+    
+    return 'Not Specified';
+};
+
 
 // --- Sub-Komponen: WalletFilterForm (Simplified) ---
 const WalletFilterForm = ({ onFetch, initialOwnerAddress, isSubmitting }) => {
@@ -40,8 +87,8 @@ const WalletFilterForm = ({ onFetch, initialOwnerAddress, isSubmitting }) => {
         onFetch(cleanedAddress); 
     };
 
-    const inputClasses = "flex-grow input-modern text-base w-full min-w-0 px-4 py-3";
-    const buttonClasses = "btn-primary text-base px-6 py-3 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0";
+    const inputClasses = "flex-grow bg-futuristic border-futuristic text-futuristic-secondary placeholder-gray-500 text-base w-full min-w-0 px-4 py-3 rounded-lg focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 transition-all duration-300 backdrop-blur-sm";
+    const buttonClasses = "bg-futuristic hover:bg-futuristic-hover text-futuristic-secondary border-futuristic text-base px-6 py-3 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0 transition-all duration-300 shadow-sm hover:shadow-md rounded-lg font-medium";
 
     return (
         <form onSubmit={handleSubmit} className="space-y-4 w-full">
@@ -65,11 +112,12 @@ const WalletFilterForm = ({ onFetch, initialOwnerAddress, isSubmitting }) => {
                   <button
                       type="submit"
                       disabled={isSubmitting || !addressInput.trim()}
-                      className={`${buttonClasses} focus-ring transition-smooth`}
+                      className={`${buttonClasses} focus-ring transition-smooth tooltip`}
+                      title={isSubmitting ? "Mencari karya digital..." : "Klik untuk mencari karya digital"}
                   >
                       {isSubmitting ? (
                         <div className="flex items-center space-x-2">
-                          <div className="loading-spinner w-5 h-5"></div>
+                          <div className="loading-spinner-sm w-4 h-4"></div>
                           <span>Mencari...</span>
                         </div>
                       ) : (
@@ -204,7 +252,7 @@ function AssetTable({ assets, isLoading, error, onAssetClick, royaltyTotalsMap, 
                             </td>
                             <td className="p-6">
                                 <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-gray-800/60 text-gray-300 border border-gray-700/60">
-                                    {asset.mediaType}
+                                    {getMediaType(asset)}
                                 </span>
                             </td>
                             <td className="p-6 text-gray-300">
@@ -225,7 +273,7 @@ function AssetTable({ assets, isLoading, error, onAssetClick, royaltyTotalsMap, 
                                       ? formatWip(royaltyTotalsMap[asset.ipId])
                                       : (isRoyaltyTotalsLoading ? (
                                         <div className="flex items-center space-x-2">
-                                          <div className="loading-spinner w-4 h-4"></div>
+                                          <div className="loading-spinner-sm w-4 h-4"></div>
                                           <span className="text-sm">Loading…</span>
                                         </div>
                                       ) : '-')}

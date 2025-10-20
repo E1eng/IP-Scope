@@ -91,27 +91,51 @@ const QuickStats = ({ ownerAddress, searchResults = [] }) => {
       label: 'Royalty Earned',
       value: stats.currencyBreakdown && Object.keys(stats.currencyBreakdown).length > 0 ? (
         <div className="space-y-1">
-          {Object.entries(stats.currencyBreakdown)
-            .filter(([symbol, amount]) => amount > 0)
-            .sort((a, b) => {
-              // Prioritize WIP as primary currency, then sort by amount
-              if (a[0] === 'WIP' && b[0] !== 'WIP') return -1;
-              if (b[0] === 'WIP' && a[0] !== 'WIP') return 1;
-              return b[1] - a[1]; // Sort by amount descending
-            })
-            .map(([symbol, amount], index) => (
-              <div key={symbol} className="flex items-center space-x-1">
-                <div className={`w-2 h-2 rounded-full ${symbol === 'WIP' ? 'bg-yellow-400' : 'bg-gray-400'}`}></div>
-                <span className="text-yellow-400 font-semibold">
-                  {Number(amount).toFixed(6)} {symbol}
-                </span>
-              </div>
-            ))
-          }
+          {(() => {
+            const entries = Object.entries(stats.currencyBreakdown)
+              .filter(([symbol, amount]) => amount > 0)
+              .sort((a, b) => {
+                // Prioritize WIP as primary currency, then sort by amount
+                if (a[0] === 'WIP' && b[0] !== 'WIP') return -1;
+                if (b[0] === 'WIP' && a[0] !== 'WIP') return 1;
+                return b[1] - a[1]; // Sort by amount descending
+              });
+            
+            const wipEntry = entries.find(([symbol]) => symbol === 'WIP');
+            const otherEntries = entries.filter(([symbol]) => symbol !== 'WIP');
+            
+            return (
+              <>
+                {/* WIP as primary - large and prominent */}
+                {wipEntry && (
+                  <div className="flex items-center space-x-2">
+                    <div className="w-3 h-3 rounded-full bg-yellow-400"></div>
+                    <span className="text-yellow-400 font-bold text-lg">
+                      {Number(wipEntry[1]).toFixed(6)} {wipEntry[0]}
+                    </span>
+                  </div>
+                )}
+                
+                {/* Other currencies - smaller and secondary */}
+                {otherEntries.length > 0 && (
+                  <div className="space-y-0.5 ml-5">
+                    {otherEntries.map(([symbol, amount]) => (
+                      <div key={symbol} className="flex items-center space-x-1">
+                        <div className="w-1.5 h-1.5 rounded-full bg-gray-400"></div>
+                        <span className="text-gray-300 text-sm">
+                          {Number(amount).toFixed(4)} {symbol}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            );
+          })()}
         </div>
       ) : (
         <div className="flex items-center space-x-2">
-          <span className="text-gray-400">0.000000 WIP</span>
+          <span className="text-gray-400 text-lg font-bold">0.000000 WIP</span>
         </div>
       ),
       icon: '💰',
@@ -128,12 +152,15 @@ const QuickStats = ({ ownerAddress, searchResults = [] }) => {
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
       {statCards.map((stat, index) => (
-        <div key={index} className="bg-gray-800 rounded-lg p-4 border border-gray-700">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-gray-400 text-sm">{stat.label}</span>
+        <div key={index} className="card-futuristic card-futuristic-hover p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center space-x-2">
+              <div className="w-2 h-2 bg-cyan-400 rounded-full animate-pulse"></div>
+              <span className="text-futuristic-secondary text-sm font-medium">{stat.label}</span>
+            </div>
             <span className="text-2xl">{stat.icon}</span>
           </div>
-          <div className={`text-xl font-bold ${stat.color}`}>
+          <div className={`text-2xl font-bold text-futuristic`}>
             {stat.value}
           </div>
         </div>

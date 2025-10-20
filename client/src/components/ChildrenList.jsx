@@ -120,24 +120,25 @@ const ChildrenList = ({ ipId, isOpen, totalCount }) => {
 
     if (loading) {
         return (
-            <div className="flex items-center justify-center h-64">
-                <div className="text-center">
-                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500 mx-auto mb-4"></div>
-                    <p className="text-purple-400">Loading derivative works...</p>
+            <div className="flex flex-col items-center justify-center p-8 space-y-4">
+                <div className="loading-wave">
+                    <div></div><div></div><div></div><div></div><div></div>
                 </div>
+                <p className="text-gray-400 text-sm">Loading derivative works...</p>
             </div>
         );
     }
 
     if (error) {
         return (
-            <div className="text-center py-12">
-                <div className="text-4xl mb-4">⚠️</div>
-                <h4 className="text-lg font-semibold text-red-400 mb-2">Failed to Load Derivative Works</h4>
-                <p className="text-red-300 text-sm">{error}</p>
+            <div className="flex flex-col items-center justify-center p-8 space-y-4">
+                <div className="w-16 h-16 rounded-full bg-red-900/20 flex items-center justify-center">
+                    <span className="text-red-400 text-2xl">⚠️</span>
+                </div>
+                <p className="text-red-400 text-center break-words">{error}</p>
                 <button
                     onClick={() => fetchChildren(true)}
-                    className="mt-4 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors"
+                    className="px-4 py-2 bg-gray-800/50 hover:bg-gray-700/50 text-gray-300 hover:text-cyan-400 border border-gray-600/50 hover:border-cyan-500/50 rounded-lg transition-all duration-300 text-sm"
                 >
                     Try Again
                 </button>
@@ -146,42 +147,59 @@ const ChildrenList = ({ ipId, isOpen, totalCount }) => {
     }
 
     return (
-        <div className="space-y-6">
-            <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold text-purple-300 flex items-center">
-                    <span className="mr-2">👇</span>
-                    Direct Derivative Works ({total ? total.toLocaleString() : '...'})
-                </h3>
-                <div className="text-sm text-gray-400">
-                    Showing {children ? children.length : 0} of {total ? total.toLocaleString() : '...'}
+        <div className="space-y-3">
+            {/* Minimalist Header - Same as Royalty Ledger */}
+            <div className="bg-gray-800/30 rounded-lg p-4 border border-gray-700/30">
+                <h4 className="font-medium text-base mb-3 text-gray-200">
+                    Derivative Works
+                </h4>
+                
+                <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                        <span className="text-gray-400 text-sm">Total Count:</span>
+                        <span className="text-gray-200 font-medium text-sm">
+                            {total ? total.toLocaleString() : '...'}
+                        </span>
+                    </div>
+                    
+                    <div className="flex items-center justify-between">
+                        <span className="text-gray-400 text-sm">Showing:</span>
+                        <span className="text-cyan-400 font-medium text-sm">
+                            {children ? children.length : 0} of {total ? total.toLocaleString() : '...'}
+                        </span>
+                    </div>
                 </div>
             </div>
 
             {!children || !Array.isArray(children) || children.length === 0 ? (
                 total > 0 ? (
-                    <div className="text-center py-12 text-gray-400">
-                        <div className="text-4xl mb-4">🧩</div>
-                        <p className="mb-4">Derivatives detected ({total.toLocaleString()}) but not loaded yet.</p>
+                    <div className="flex flex-col items-center justify-center p-8 space-y-4">
+                        <div className="w-16 h-16 rounded-full bg-gray-800/50 flex items-center justify-center">
+                            <span className="text-gray-500 text-2xl">🧩</span>
+                        </div>
+                        <p className="text-gray-500 text-center">Derivatives detected but not loaded yet</p>
                         <button
                             onClick={() => fetchChildren(true)}
-                            className="px-6 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors"
+                            className="px-4 py-2 bg-gray-800/50 hover:bg-gray-700/50 text-gray-300 hover:text-cyan-400 border border-gray-600/50 hover:border-cyan-500/50 rounded-lg transition-all duration-300 text-sm"
                         >
                             Load Derivative Works
                         </button>
                     </div>
                 ) : (
-                    <div className="text-center py-12 text-gray-400">
-                        <div className="text-4xl mb-4">🆕</div>
-                        <p>No derivative works found</p>
+                    <div className="flex flex-col items-center justify-center p-8 space-y-4">
+                        <div className="w-16 h-16 rounded-full bg-gray-800/50 flex items-center justify-center">
+                            <span className="text-gray-500 text-2xl">🆕</span>
+                        </div>
+                        <p className="text-gray-500 text-center">No derivative works found</p>
                     </div>
                 )
             ) : (
-                <div className="space-y-3">
+                <div className="space-y-2">
                     {children.map((child, index) => (
-                        <div key={index} className="bg-gray-800/50 rounded-lg p-4 border border-gray-700/50 hover:border-purple-500/50 transition-colors">
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center space-x-4">
-                                    <div className="w-10 h-10 rounded-lg overflow-hidden border border-gray-700 flex-shrink-0">
+                        <div key={index} className="bg-gray-800/30 rounded-lg p-3 border border-gray-700/30 hover:border-cyan-500/50 transition-colors">
+                            <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center space-x-3">
+                                    <div className="w-8 h-8 rounded-lg overflow-hidden border border-gray-600 flex-shrink-0">
                                         <img
                                             src={getImageUrl(child)}
                                             alt={child.name || 'Derivative Work'}
@@ -192,26 +210,18 @@ const ChildrenList = ({ ipId, isOpen, totalCount }) => {
                                         />
                                     </div>
                                     <div className="flex-1 min-w-0">
-                                        <h4 className="font-semibold text-white truncate">
+                                        <h4 className="font-semibold text-gray-200 truncate text-sm">
                                             {child.name || 'Unnamed Asset'}
                                         </h4>
                                         <a
                                             href={`https://explorer.story.foundation/ipa/${child.ipId}`}
                                             target="_blank"
                                             rel="noopener noreferrer"
-                                            className="text-sm text-blue-400 hover:text-blue-300 truncate font-mono transition-colors duration-200 hover:underline"
+                                            className="text-xs text-cyan-400 hover:text-cyan-300 truncate font-mono transition-colors duration-200"
                                             title={`View ${child.ipId} on Story Protocol Explorer`}
                                         >
                                             {child.ipId}
                                         </a>
-                                        <div className="flex items-center space-x-4 text-xs text-gray-500 mt-1">
-                                            <span>Processed: {child.processedAt ? new Date(child.processedAt).toLocaleDateString('en-US') : 'N/A'}</span>
-                                            {child.caller && (
-                                                <span title={child.caller}>
-                                                    Caller: {child.caller.slice(0, 6)}...{child.caller.slice(-4)}
-                                                </span>
-                                            )}
-                                        </div>
                                     </div>
                                 </div>
                                 <div className="text-right">
@@ -220,20 +230,27 @@ const ChildrenList = ({ ipId, isOpen, totalCount }) => {
                                     </span>
                                 </div>
                             </div>
-                            
+                            <div className="flex items-center justify-between text-xs text-gray-500">
+                                <span>Processed: {child.processedAt ? new Date(child.processedAt).toLocaleDateString('en-US') : 'N/A'}</span>
+                                {child.caller && (
+                                    <span title={child.caller}>
+                                        {child.caller.slice(0, 6)}...{child.caller.slice(-4)}
+                                    </span>
+                                )}
+                            </div>
                         </div>
                     ))}
 
                     {hasMore && (
-                        <div className="text-center pt-6">
-                            <div className="bg-gray-800/30 rounded-lg p-4 mb-4">
-                                <div className="flex items-center justify-between text-sm text-gray-300 mb-2">
+                        <div className="text-center pt-4">
+                            <div className="bg-gray-800/30 rounded-lg p-3 mb-4">
+                                <div className="flex items-center justify-between text-xs text-gray-400 mb-2">
                                     <span>Progress</span>
                                     <span>{children.length} / {total.toLocaleString()}</span>
                                 </div>
                                 <div className="w-full bg-gray-700 rounded-full h-2">
                                     <div 
-                                        className="bg-gradient-to-r from-purple-500 to-blue-500 h-2 rounded-full transition-all duration-300"
+                                        className="bg-cyan-500 h-2 rounded-full transition-all duration-300"
                                         style={{ width: `${(children.length / total) * 100}%` }}
                                     ></div>
                                 </div>
@@ -242,19 +259,17 @@ const ChildrenList = ({ ipId, isOpen, totalCount }) => {
                             <button
                                 onClick={loadMore}
                                 disabled={loadingMore}
-                                className="px-8 py-3 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-semibold rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl"
+                                className="px-6 py-2 bg-gray-800/50 hover:bg-gray-700/50 text-gray-300 hover:text-cyan-400 border border-gray-600/50 hover:border-cyan-500/50 rounded-lg transition-all duration-300 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 {loadingMore ? (
-                                    <div className="flex items-center space-x-3">
-                                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                                    <div className="flex items-center space-x-2">
+                                        <div className="loading-spinner-sm w-4 h-4"></div>
                                         <span>Loading More...</span>
                                     </div>
                                 ) : (
-                                    <div className="flex items-center space-x-3">
-                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                                        </svg>
+                                    <div className="flex items-center space-x-2">
                                         <span>Load More Derivative Works</span>
+                                        <span className="text-sm">↓</span>
                                     </div>
                                 )}
                             </button>

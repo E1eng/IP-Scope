@@ -142,7 +142,7 @@ const WalletFilterForm = ({ onFetch, initialOwnerAddress, isSubmitting }) => {
                     )}
                 </div>
                 <div id="search-help" className="text-xs text-gray-500 mt-1">
-                  Enter a wallet address or token contract to search for IP assets
+                  Enter a wallet address to search for IP assets
                 </div>
             </div>
 

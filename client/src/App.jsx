@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom';
 import ExplorerPage from './pages/ExplorerPage';
 import AssetDetailPage from './pages/AssetDetailPage';
-import FeaturesList from './components/FeaturesList';
 import { SearchProvider } from './SearchContext'; 
 import { 
   Search, 
@@ -47,7 +46,6 @@ const MonitoringPage = () => (
 // --- Navigation Items ---
 const navItems = [
     { to: '/', label: 'Explorer', icon: Search },
-    { to: '/features', label: 'Features', icon: CheckCircle },
     { to: '/ip-graph', label: 'Flow Graph', icon: Zap },
     { to: '/monitoring', label: 'Monitoring', icon: BarChart3 },
 ];
@@ -64,8 +62,8 @@ function Sidebar() {
                     <img src="/favicon.png" alt="IPScope Logo" className="w-8 h-8" />
                 </div>
                 <div>
-                  <span className="text-2xl font-black text-gradient">IPScope</span>
-                  <p className="text-xs text-gray-500 font-medium">IP Analytics</p>
+                  <span className="text-2xl font-black text-gradient">IP Scope</span>
+                  <p className="text-xs text-gray-500 font-medium">v1.0.0</p>
                 </div>
             </div>
             <nav className="flex flex-col gap-3 mt-4" role="list">
@@ -262,8 +260,6 @@ function App() {
                     >
                         <Routes>
                             <Route path="/" element={<ExplorerPage />} />
-                            <Route path="/features" element={<FeaturesList />} />
-                            {/* Rute baru untuk fitur masa depan */}
                             <Route path="/ip-graph" element={<IPGraphPage />} />
                             <Route path="/monitoring" element={<MonitoringPage />} />
                             <Route path="/asset/:id" element={<AssetDetailPage />} />

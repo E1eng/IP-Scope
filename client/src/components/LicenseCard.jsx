@@ -57,14 +57,14 @@ const LicenseCard = ({ asset }) => {
       {/* Minimalist License Info - Only essential fields */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <span className="text-gray-400 text-sm">Type:</span>
+          <span className="text-gray-500 text-sm font-medium">Type</span>
           <span className="text-gray-200 font-medium text-sm">{termName}</span>
         </div>
         
         {/* Commercial Use */}
         {pilTerms?.terms?.commercialUse !== undefined && (
           <div className="flex items-center justify-between">
-            <span className="text-gray-400 text-sm">Commercial:</span>
+            <span className="text-gray-500 text-sm font-medium">Commercial</span>
             <span className={`font-medium text-sm ${pilTerms.terms.commercialUse ? 'text-green-400' : 'text-red-400'}`}>
               {pilTerms.terms.commercialUse ? '✓' : '✗'}
             </span>
@@ -74,7 +74,7 @@ const LicenseCard = ({ asset }) => {
         {/* Derivatives */}
         {pilTerms?.terms?.derivativesAllowed !== undefined && (
           <div className="flex items-center justify-between">
-            <span className="text-gray-400 text-sm">Derivatives:</span>
+            <span className="text-gray-500 text-sm font-medium">Derivatives</span>
             <span className={`font-medium text-sm ${pilTerms.terms.derivativesAllowed ? 'text-green-400' : 'text-red-400'}`}>
               {pilTerms.terms.derivativesAllowed ? '✓' : '✗'}
             </span>
@@ -84,7 +84,7 @@ const LicenseCard = ({ asset }) => {
         {/* Commercial Rev Share - Always show if available */}
         {pilTerms?.terms?.commercialRevShare !== undefined && (
           <div className="flex items-center justify-between">
-            <span className="text-gray-400 text-sm">Rev Share:</span>
+            <span className="text-gray-500 text-sm font-medium">Rev Share</span>
             <span className="text-yellow-400 font-medium text-sm">
               {pilTerms.terms.commercialRevShare > 0 
                 ? `${(pilTerms.terms.commercialRevShare / 1000000).toFixed(1)}%`
@@ -97,7 +97,7 @@ const LicenseCard = ({ asset }) => {
         {/* Transferable - Always show if available */}
         {pilTerms?.terms?.transferable !== undefined && (
           <div className="flex items-center justify-between">
-            <span className="text-gray-400 text-sm">Transferable:</span>
+            <span className="text-gray-500 text-sm font-medium">Transferable</span>
             <span className={`font-medium text-sm ${pilTerms.terms.transferable ? 'text-green-400' : 'text-red-400'}`}>
               {pilTerms.terms.transferable ? '✓' : '✗'}
             </span>
@@ -107,7 +107,7 @@ const LicenseCard = ({ asset }) => {
         {/* Minting Fee - Only show if significant */}
         {pilTerms?.terms?.defaultMintingFee && pilTerms.terms.defaultMintingFee !== '0' && (
           <div className="flex items-center justify-between">
-            <span className="text-gray-400 text-sm">Fee:</span>
+            <span className="text-gray-500 text-sm font-medium">Fee</span>
             <span className="text-orange-400 font-medium text-sm">{(parseInt(pilTerms.terms.defaultMintingFee) / Math.pow(10, 18)).toFixed(2)} IP</span>
           </div>
         )}

@@ -1,6 +1,28 @@
 import React, { useMemo } from 'react';
+import { 
+  Palette, 
+  DollarSign, 
+  AlertTriangle, 
+  TrendingUp,
+  TrendingDown
+} from 'lucide-react';
+import { StatCardSkeleton, StaggeredSkeleton } from './SkeletonComponents';
 
-const QuickStats = ({ ownerAddress, searchResults = [] }) => {
+const QuickStats = ({ ownerAddress, searchResults = [], isLoading = false }) => {
+
+  // Show skeleton loading if loading
+  if (isLoading) {
+    return (
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-6">
+        <StaggeredSkeleton>
+          <StatCardSkeleton />
+          <StatCardSkeleton />
+          <StatCardSkeleton />
+          <StatCardSkeleton />
+        </StaggeredSkeleton>
+      </div>
+    );
+  }
 
   // Hitung stats langsung dari searchResults tanpa fetch tambahan dan tanpa konversi USDT
   const stats = useMemo(() => {
@@ -83,14 +105,15 @@ const QuickStats = ({ ownerAddress, searchResults = [] }) => {
   const statCards = [
     {
       label: 'Total Assets',
-      value: stats.metrics?.totalAssets || 0,
-      icon: '🎨',
-      color: 'text-blue-400'
+      value: (stats.metrics?.totalAssets || 0).toLocaleString(),
+      icon: Palette,
+      color: 'text-indigo-400',
+      trend: null
     },
     {
       label: 'Royalty Earned',
       value: stats.currencyBreakdown && Object.keys(stats.currencyBreakdown).length > 0 ? (
-        <div className="space-y-1">
+        <div className="space-y-2">
           {(() => {
             const entries = Object.entries(stats.currencyBreakdown)
               .filter(([symbol, amount]) => amount > 0)
@@ -106,23 +129,21 @@ const QuickStats = ({ ownerAddress, searchResults = [] }) => {
             
             return (
               <>
-                {/* WIP as primary - large and prominent */}
+                {/* Primary currency - large and prominent */}
                 {wipEntry && (
                   <div className="flex items-center space-x-2">
-                    <div className="w-3 h-3 rounded-full bg-yellow-400"></div>
-                    <span className="text-yellow-400 font-bold text-lg">
+                    <span className="text-3xl font-bold text-indigo-400">
                       {Number(wipEntry[1]).toFixed(6)} {wipEntry[0]}
                     </span>
                   </div>
                 )}
                 
-                {/* Other currencies - smaller and secondary */}
+                {/* Secondary currencies - smaller below */}
                 {otherEntries.length > 0 && (
-                  <div className="space-y-0.5 ml-5">
+                  <div className="space-y-1">
                     {otherEntries.map(([symbol, amount]) => (
-                      <div key={symbol} className="flex items-center space-x-1">
-                        <div className="w-1.5 h-1.5 rounded-full bg-gray-400"></div>
-                        <span className="text-gray-300 text-sm">
+                      <div key={symbol} className="flex items-center space-x-2">
+                        <span className="text-sm text-gray-400">
                           {Number(amount).toFixed(4)} {symbol}
                         </span>
                       </div>
@@ -134,37 +155,62 @@ const QuickStats = ({ ownerAddress, searchResults = [] }) => {
           })()}
         </div>
       ) : (
-        <div className="flex items-center space-x-2">
-          <span className="text-gray-400 text-lg font-bold">0.000000 WIP</span>
-        </div>
+        <span className="text-3xl font-bold text-gray-400">0.000000 WIP</span>
       ),
-      icon: '💰',
-      color: 'text-yellow-400'
+      icon: DollarSign,
+      color: 'text-indigo-400',
+      trend: null
     },
     {
       label: 'Total Disputes',
-      value: stats.disputeMetrics?.totalDisputes || 0,
-      icon: '⚠️',
-      color: 'text-red-400'
+      value: (stats.disputeMetrics?.totalDisputes || 0).toLocaleString(),
+      icon: AlertTriangle,
+      color: stats.disputeMetrics?.totalDisputes > 0 ? 'text-red-400' : 'text-green-400',
+      trend: stats.disputeMetrics?.totalDisputes > 0 ? 'up' : 'down'
     }
   ];
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-      {statCards.map((stat, index) => (
-        <div key={index} className="card-futuristic card-futuristic-hover p-6">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center space-x-2">
-              <div className="w-2 h-2 bg-cyan-400 rounded-full animate-pulse"></div>
-              <span className="text-futuristic-secondary text-sm font-medium">{stat.label}</span>
+    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-6">
+      {statCards.map((stat, index) => {
+        const IconComponent = stat.icon;
+        return (
+          <div 
+            key={index} 
+            className="bg-gray-900/30 backdrop-blur-sm border border-gray-800/50 rounded-2xl p-6 hover:border-gray-700 transition-smooth"
+          >
+            {/* Icon in top-left */}
+            <div className="flex items-start justify-between mb-4">
+              <div className="p-2 bg-gray-800 rounded-lg">
+                <IconComponent className="w-5 h-5 text-gray-300" />
+              </div>
+              
+              {/* Trend indicator in top-right */}
+              {stat.trend && (
+                <div className="flex items-center">
+                  {stat.trend === 'up' ? (
+                    <TrendingUp className="w-4 h-4 text-red-400" />
+                  ) : (
+                    <TrendingDown className="w-4 h-4 text-green-400" />
+                  )}
+                </div>
+              )}
             </div>
-            <span className="text-2xl">{stat.icon}</span>
+
+            {/* Large value */}
+            <div className="mb-2">
+              <div className={`text-3xl font-bold ${stat.color}`}>
+                {stat.value}
+              </div>
+            </div>
+
+            {/* Small label below */}
+            <div className="text-sm text-gray-400">
+              {stat.label}
+            </div>
           </div>
-          <div className={`text-2xl font-bold text-futuristic`}>
-            {stat.value}
-          </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 };

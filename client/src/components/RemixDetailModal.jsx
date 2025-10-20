@@ -3,6 +3,9 @@ import axios from 'axios';
 import LicenseCard from './LicenseCard';
 import DetailRow from './DetailRow';
 import ChildrenList from './ChildrenList';
+import { ModalSkeleton, TextSkeleton, ImageSkeleton } from './SkeletonComponents';
+import { NoRoyaltyData, NoDerivatives, NoTransactions } from './EmptyState';
+import { getModalProps, getButtonProps, announceToScreenReader } from '../utils/accessibility';
 import { Link } from 'react-router-dom';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
@@ -77,11 +80,13 @@ const CurrencyFlowDisplay = ({ asset }) => {
         return (
             <div className="bg-gray-800/50 rounded-lg p-4 mb-4 border border-gray-700/50">
                 <h3 className="font-medium text-base mb-3 text-gray-200">
-                    💰 Royalty Flow
+                    Royalty Flow
                 </h3>
-                <div className="text-center text-gray-400">Loading currency data...</div>
-            </div>
-        );
+                <div className="space-y-2">
+                    <TextSkeleton lines={3} />
+                </div>
+        </div>
+    );
     }
 
     if (!currencyData || Object.keys(currencyData).length === 0) {
@@ -94,7 +99,7 @@ const CurrencyFlowDisplay = ({ asset }) => {
             </div>
         );
     }
-
+    
     // Sort currencies: WIP first, then by amount descending
     const sortedCurrencies = Object.entries(currencyData).sort((a, b) => {
         if (a[0] === 'WIP' && b[0] !== 'WIP') return -1;
@@ -111,9 +116,9 @@ const CurrencyFlowDisplay = ({ asset }) => {
             <div className="space-y-2">
                 {sortedCurrencies.map(([symbol, value]) => (
                     <div key={symbol} className="flex items-center justify-between">
-                        <span className="text-gray-400 text-sm">{symbol}:</span>
+                        <span className="text-gray-500 text-sm font-medium">{symbol}</span>
                         <span className="text-cyan-400 font-medium text-sm">{value}</span>
-                    </div>
+                </div>
                 ))}
             </div>
         </div>
@@ -188,11 +193,22 @@ const RoyaltyLedgerTab = ({ ipId }) => {
     const goNext = () => setCurrentPage(p => Math.min(totalPages, p + 1));
 
    if (isLoading) return (
-        <div className="flex flex-col items-center justify-center p-8 space-y-4">
-            <div className="loading-wave">
-                <div></div><div></div><div></div><div></div><div></div>
+        <div className="space-y-4">
+            <div className="flex items-center justify-between p-4 border-b border-gray-800">
+                <h3 className="text-lg font-semibold text-gray-100">Royalty Ledger</h3>
+                <div className="loading-skeleton h-4 w-16 rounded"></div>
             </div>
-            <p className="text-gray-400 text-sm">Loading royalty transactions...</p>
+            <div className="space-y-3">
+                {Array.from({ length: 5 }).map((_, index) => (
+                    <div key={index} className="bg-gray-800/50 rounded-lg p-4">
+                        <div className="flex justify-between items-center mb-2">
+                            <div className="loading-skeleton h-4 w-32 rounded"></div>
+                            <div className="loading-skeleton h-4 w-20 rounded"></div>
+                        </div>
+                        <div className="loading-skeleton h-3 w-24 rounded"></div>
+                    </div>
+                ))}
+            </div>
         </div>
     );
     
@@ -205,14 +221,7 @@ const RoyaltyLedgerTab = ({ ipId }) => {
         </div>
     );
     
-    if (transactions.length === 0) return (
-        <div className="flex flex-col items-center justify-center p-8 space-y-4">
-            <div className="w-16 h-16 rounded-full bg-gray-800/50 flex items-center justify-center">
-                <span className="text-gray-500 text-2xl">📊</span>
-            </div>
-            <p className="text-gray-500 text-center">No royalty transactions found</p>
-        </div>
-    );
+    if (transactions.length === 0) return <NoTransactions />;
 
     return (
         <div className="space-y-3">
@@ -266,17 +275,17 @@ const RoyaltyLedgerTab = ({ ipId }) => {
                                 className="text-cyan-400 hover:text-cyan-300 text-xs font-semibold"
                             >
                                 View ↗
-                            </a>
-                        </div>
+                        </a>
+                    </div>
                         <div className="flex items-center justify-between text-xs text-gray-500">
                             <span className="font-mono">{tx.timestamp}</span>
                             <div className="flex items-center space-x-1">
                                 <div className="w-1.5 h-1.5 bg-green-400 rounded-full"></div>
                                 <span>Confirmed</span>
                             </div>
-                        </div>
                     </div>
-                ))}
+                </div>
+            ))}
             </div>
             
             {/* Minimalist Pagination */}
@@ -329,7 +338,24 @@ const TopLicenseesTab = ({ ipId }) => {
         fetchLicensees();
     }, [ipId]);
 
-    if (isLoading) return <div className="text-center p-4 text-purple-400">Loading Top Licensees...</div>;
+    if (isLoading) return (
+        <div className="space-y-4">
+            <div className="flex items-center justify-between p-4 border-b border-gray-800">
+                <h3 className="text-lg font-semibold text-gray-100">Top Licensees</h3>
+                <div className="loading-skeleton h-4 w-16 rounded"></div>
+            </div>
+            <div className="space-y-3">
+                {Array.from({ length: 3 }).map((_, index) => (
+                    <div key={index} className="bg-gray-800/50 rounded-lg p-4">
+                        <div className="flex justify-between items-center">
+                            <div className="loading-skeleton h-4 w-32 rounded"></div>
+                            <div className="loading-skeleton h-4 w-20 rounded"></div>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
     if (error) return <div className="text-center p-4 text-red-400 bg-red-900/30 rounded-lg break-words">{error}</div>;
     if (licensees.length === 0) return <div className="text-center p-4 text-gray-500">No licensees found.</div>;
     
@@ -535,52 +561,146 @@ const RemixDetailModalContent = ({ asset, onClose, isLoading }) => {
 return (
     <div 
       id="remix-modal"
-      // Backdrop: Hitam/transparan, fixed, di tengah.
-      className="fixed inset-0 bg-black/70 backdrop-blur-sm flex justify-center items-center z-50 p-4 animate-fade-in"
+      className="fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center items-center z-50 p-4 animate-fade-in"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="modal-title"
+      aria-describedby="modal-description"
     >
       <div 
-        // FIX KRITIS: Membatasi lebar (max-w-2xl) dan tinggi (max-h-[90vh]) agar modal muncul sebagai pop-up di tengah.
-        className="bg-gray-900 border border-purple-800 rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden shadow-2xl"
+        {...getModalProps({
+          isOpen: true,
+          onClose,
+          title: 'Asset Details',
+          describedBy: 'modal-description'
+        })}
+        className="bg-gray-950 border border-gray-800 rounded-2xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden shadow-2xl mx-4 sm:mx-0"
         onClick={e => e.stopPropagation()}
       >
-        <header className="p-6 flex-shrink-0 border-b border-purple-900/50">
+        <header className="sticky top-0 z-10 bg-gray-950 p-4 sm:p-6 flex-shrink-0 border-b border-gray-800">
             <div className="flex justify-between items-start">
-                <div className="flex items-center gap-4 pr-10">
-                  <div className="w-14 h-14 rounded-lg overflow-hidden border border-gray-700 flex-shrink-0">
+                <div className="flex items-center gap-3 sm:gap-4 pr-8 sm:pr-10 flex-1 min-w-0">
+                  <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-lg overflow-hidden border border-gray-700 flex-shrink-0">
                     <img
                       src={getImageUrl(currentAsset)}
-                      alt="Asset Preview"
+                      alt={`Preview of ${currentAsset?.title || asset?.title || asset?.name || 'Untitled Asset'}`}
                       className="w-full h-full object-cover"
                       onError={(e) => { e.target.onerror = null; e.target.src = '/favicon.png'; }}
                     />
                   </div>
-                  <h2 className="text-2xl font-bold text-white tracking-tight line-clamp-2">{currentAsset?.title || asset?.title || asset?.name || 'Untitled Asset'}</h2>
+                  <div className="flex-1 min-w-0">
+                    <h2 id="modal-title" className="text-lg sm:text-xl font-bold text-white truncate">
+                      {currentAsset?.title || asset?.title || asset?.name || 'Untitled Asset'}
+                    </h2>
+                    <p id="modal-description" className="text-gray-400 text-xs sm:text-sm truncate">
+                      {currentAsset?.description || currentAsset?.nftMetadata?.description || 'No description available'}
+                    </p>
+                  </div>
                 </div>
                 <button 
-                    onClick={onClose} 
-                    className="text-gray-400 hover:text-red-400 p-2 rounded-full transition-colors bg-gray-800"
-                    title="Close and Back to Explorer"
+                  {...getButtonProps({
+                    variant: 'secondary',
+                    ariaLabel: 'Close asset details and return to explorer'
+                  })}
+                  onClick={() => {
+                    onClose();
+                    announceToScreenReader('Asset details closed');
+                  }}
+                  className="text-gray-400 hover:text-white p-2 rounded-lg transition-smooth hover:bg-gray-800 focus-ring-primary"
                 >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                 </button>
             </div>
-            <div className="flex mt-4 border-b border-gray-700">
-                <button onClick={() => setActiveTab('details')} className={`py-2 px-5 font-semibold transition-colors ${activeTab === 'details' ? 'text-gray-100 border-b-2 border-gray-300' : 'text-gray-400 hover:text-gray-200'}`}>Details</button>
-                <button onClick={() => setActiveTab('derivatives')} className={`py-2 px-5 font-semibold transition-colors ${activeTab === 'derivatives' ? 'text-gray-100 border-b-2 border-gray-300' : 'text-gray-400 hover:text-gray-2'}`}>Derivative Works</button>
-                <button onClick={() => setActiveTab('ledger')} className={`py-2 px-5 font-semibold transition-colors ${activeTab === 'ledger' ? 'text-gray-100 border-b-2 border-gray-300' : 'text-gray-400 hover:text-gray-200'}`}>Royalty Ledger</button>
-                <button onClick={() => setActiveTab('licensees')} className={`py-2 px-5 font-semibold transition-colors ${activeTab === 'licensees' ? 'text-gray-100 border-b-2 border-gray-300' : 'text-gray-400 hover:text-gray-200'}`}>Top Licensees</button>
+            
+            {/* Tabs with underline style */}
+            <div className="flex mt-4 sm:mt-6 border-b border-gray-800 overflow-x-auto" role="tablist" aria-label="Asset detail sections">
+                <button 
+                    onClick={() => {
+                        setActiveTab('details');
+                        announceToScreenReader('Switched to details tab');
+                    }}
+                    className={`py-2 sm:py-3 px-3 sm:px-4 font-medium transition-smooth border-b-2 whitespace-nowrap ${
+                        activeTab === 'details' 
+                            ? 'text-gray-100 border-indigo-500' 
+                            : 'text-gray-400 hover:text-gray-200 border-transparent'
+                    }`}
+                    role="tab"
+                    aria-selected={activeTab === 'details'}
+                    aria-controls="details-panel"
+                    id="details-tab"
+                >
+                    Details
+                </button>
+                <button 
+                    onClick={() => {
+                        setActiveTab('derivatives');
+                        announceToScreenReader('Switched to derivative works tab');
+                    }}
+                    className={`py-2 sm:py-3 px-3 sm:px-4 font-medium transition-smooth border-b-2 whitespace-nowrap ${
+                        activeTab === 'derivatives' 
+                            ? 'text-gray-100 border-indigo-500' 
+                            : 'text-gray-400 hover:text-gray-200 border-transparent'
+                    }`}
+                    role="tab"
+                    aria-selected={activeTab === 'derivatives'}
+                    aria-controls="derivatives-panel"
+                    id="derivatives-tab"
+                >
+                    Derivative Works
+                </button>
+                <button 
+                    onClick={() => {
+                        setActiveTab('ledger');
+                        announceToScreenReader('Switched to royalty ledger tab');
+                    }}
+                    className={`py-2 sm:py-3 px-3 sm:px-4 font-medium transition-smooth border-b-2 whitespace-nowrap ${
+                        activeTab === 'ledger' 
+                            ? 'text-gray-100 border-indigo-500' 
+                            : 'text-gray-400 hover:text-gray-200 border-transparent'
+                    }`}
+                    role="tab"
+                    aria-selected={activeTab === 'ledger'}
+                    aria-controls="ledger-panel"
+                    id="ledger-tab"
+                >
+                    Royalty Ledger
+                </button>
+                <button 
+                    onClick={() => {
+                        setActiveTab('licensees');
+                        announceToScreenReader('Switched to top licensees tab');
+                    }}
+                    className={`py-2 sm:py-3 px-3 sm:px-4 font-medium transition-smooth border-b-2 whitespace-nowrap ${
+                        activeTab === 'licensees' 
+                            ? 'text-gray-100 border-indigo-500' 
+                            : 'text-gray-400 hover:text-gray-200 border-transparent'
+                    }`}
+                    role="tab"
+                    aria-selected={activeTab === 'licensees'}
+                    aria-controls="licensees-panel"
+                    id="licensees-tab"
+                >
+                    Top Licensees
+                </button>
             </div>
         </header>
 
-        <div className="px-6 pb-6 overflow-y-auto custom-scrollbar flex-grow">
-            <div className="pt-6">
+        <div className="px-4 sm:px-6 pb-6 overflow-y-auto custom-scrollbar flex-grow">
+            <div className="pt-4 sm:pt-6 space-y-4 sm:space-y-6">
                 {activeTab === 'details' && (
+                    <div 
+                        id="details-panel"
+                        role="tabpanel"
+                        aria-labelledby="details-tab"
+                        tabIndex={0}
+                    >
                     <div className="space-y-6">
                         {/* Asset Image and Description */}
-                        <div className="bg-gray-800/50 rounded-lg p-6 border border-gray-700/50">
-                            <div className="flex gap-6">
+                        <div className="bg-gray-900/30 rounded-lg p-6 border border-gray-800/30">
+                            {/* Mobile: Vertical layout, Desktop: Horizontal layout */}
+                            <div className="flex flex-col lg:flex-row gap-6">
                                 {/* Large Image */}
-                                <div className="w-48 h-48 rounded-lg overflow-hidden border border-gray-700 flex-shrink-0">
+                                <div className="w-full lg:w-48 h-48 lg:h-48 rounded-lg overflow-hidden border border-gray-700 flex-shrink-0 mx-auto lg:mx-0">
                                     <img
                                         src={getImageUrl(currentAsset)}
                                         alt={currentAsset?.title || asset?.title || asset?.name || 'Asset Preview'}
@@ -627,10 +747,15 @@ return (
                                                     href={currentAsset.uri}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
-                                                    className="text-blue-400 hover:text-blue-300 ml-2 transition-colors break-all"
-                                                    title="View on IPFS"
+                                                    className="text-blue-400 hover:text-blue-300 ml-2 transition-colors block mt-1"
+                                                    title={`View on IPFS: ${currentAsset.uri}`}
                                                 >
-                                                    {currentAsset.uri}
+                                                    <span className="break-all">
+                                                        {currentAsset.uri.length > 50 
+                                                            ? `${currentAsset.uri.substring(0, 30)}...${currentAsset.uri.substring(currentAsset.uri.length - 20)}`
+                                                            : currentAsset.uri
+                                                        }
+                                                    </span>
                                                 </a>
                                             </div>
                                         )}
@@ -641,8 +766,8 @@ return (
                         
                         <LicenseCard asset={currentAsset} />
                             <CurrencyFlowDisplay asset={currentAsset} />
-                        <div className="space-y-1 pt-4 border-t border-gray-700 text-sm">
-                            <h3 className="font-semibold text-purple-300 mb-2">Key Details</h3>
+                        <div className="space-y-4 pt-6 border-t border-gray-800">
+                            <h3 className="text-lg font-semibold text-gray-100 mb-4">Key Details</h3>
                             <DetailRow label="IP ID" value={currentAsset?.ipId} />
                             <DetailRow label="Media Type" value={mediaTypeDisplay} />
                             <DetailRow label="Creator" value={creatorName} />
@@ -657,15 +782,49 @@ return (
                             />
                             {currentAsset?.tokenContract && <DetailRow label="Token Contract" value={currentAsset.tokenContract} />}
                         </div>
+                        </div>
                     </div>
                 )}
-                {activeTab === 'derivatives' && <ChildrenList ipId={currentAsset?.ipId} isOpen={true} totalCount={currentAsset?.childrenCount || 0} />}
-      {activeTab === 'ledger' && <RoyaltyLedgerTab ipId={currentAsset?.ipId} />}
-                {activeTab === 'licensees' && <TopLicenseesTab ipId={currentAsset?.ipId} />}
+                {activeTab === 'derivatives' && (
+                    <div 
+                        id="derivatives-panel"
+                        role="tabpanel"
+                        aria-labelledby="derivatives-tab"
+                        tabIndex={0}
+                    >
+                        <ChildrenList ipId={currentAsset?.ipId} isOpen={true} totalCount={currentAsset?.childrenCount || 0} />
+                    </div>
+                )}
+                {activeTab === 'ledger' && (
+                    <div 
+                        id="ledger-panel"
+                        role="tabpanel"
+                        aria-labelledby="ledger-tab"
+                        tabIndex={0}
+                    >
+                        <RoyaltyLedgerTab ipId={currentAsset?.ipId} />
+                    </div>
+                )}
+                {activeTab === 'licensees' && (
+                    <div 
+                        id="licensees-panel"
+                        role="tabpanel"
+                        aria-labelledby="licensees-tab"
+                        tabIndex={0}
+                    >
+                        <TopLicenseesTab ipId={currentAsset?.ipId} />
+                    </div>
+                )}
             </div>
         </div>
-        <footer className="p-6 flex-shrink-0 border-t border-purple-900/50">
-            <a href={`https://explorer.story.foundation/ipa/${currentAsset?.ipId}`} target="_blank" rel="noopener noreferrer" className="w-full text-center block p-3 font-bold bg-gray-800 rounded-lg hover:bg-gray-700 transition-colors text-gray-100 border border-gray-700">
+        <footer className="p-4 sm:p-6 flex-shrink-0 border-t border-gray-800">
+            <a 
+                href={`https://explorer.story.foundation/ipa/${currentAsset?.ipId}`} 
+                target="_blank" 
+                rel="noopener noreferrer" 
+                className="w-full text-center block p-3 font-medium bg-gray-800 rounded-lg hover:bg-gray-700 transition-smooth text-gray-100 border border-gray-700 hover:border-gray-600 focus-ring-primary"
+                aria-label={`View ${currentAsset?.title || 'this asset'} on Story Protocol Explorer (opens in new tab)`}
+            >
                 View on Explorer
             </a>
         </footer>

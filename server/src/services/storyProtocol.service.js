@@ -1458,8 +1458,8 @@ const getAssetsByOwner = async (ownerAddress, limit = 200, offset = 0, tokenCont
                 }
             } else {
                 // Apply existing dispute status
-                for (const a of data) {
-                    if (ipToStatus.has(a.ipId)) a.disputeStatus = ipToStatus.get(a.ipId);
+            for (const a of data) {
+                if (ipToStatus.has(a.ipId)) a.disputeStatus = ipToStatus.get(a.ipId);
                 }
             }
             
@@ -1560,8 +1560,8 @@ const getAssetsByOwner = async (ownerAddress, limit = 200, offset = 0, tokenCont
                             }
                         } else {
                             asset.totalRoyaltyCollected = '0.000000 WIP';
-                        }
-                        } catch (e) {
+            }
+        } catch (e) {
                             console.log(`[SERVICE] Asset ${asset.ipId} - Error: ${e.message}`);
                             asset.totalRoyaltyCollected = '0.000000 WIP';
                             asset.analytics = { totalRoyaltiesPaid: {} };

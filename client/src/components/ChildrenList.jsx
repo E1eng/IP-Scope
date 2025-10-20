@@ -138,7 +138,7 @@ const ChildrenList = ({ ipId, isOpen, totalCount }) => {
                 <p className="text-red-400 text-center break-words">{error}</p>
                 <button
                     onClick={() => fetchChildren(true)}
-                    className="px-4 py-2 bg-gray-800/50 hover:bg-gray-700/50 text-gray-300 hover:text-cyan-400 border border-gray-600/50 hover:border-cyan-500/50 rounded-lg transition-all duration-300 text-sm"
+                    className="px-4 py-2 bg-gray-800/50 hover:bg-gray-700/50 text-gray-300 hover:text-indigo-400 border border-gray-600/50 hover:border-indigo-500/50 rounded-lg transition-smooth text-sm"
                 >
                     Try Again
                 </button>
@@ -148,6 +148,7 @@ const ChildrenList = ({ ipId, isOpen, totalCount }) => {
 
     return (
         <div className="space-y-3">
+            {/* Minimalist Header - Same as Royalty Ledger */}
             {/* Minimalist Header - Same as Royalty Ledger */}
             <div className="bg-gray-800/30 rounded-lg p-4 border border-gray-700/30">
                 <h4 className="font-medium text-base mb-3 text-gray-200">
@@ -180,7 +181,7 @@ const ChildrenList = ({ ipId, isOpen, totalCount }) => {
                         <p className="text-gray-500 text-center">Derivatives detected but not loaded yet</p>
                         <button
                             onClick={() => fetchChildren(true)}
-                            className="px-4 py-2 bg-gray-800/50 hover:bg-gray-700/50 text-gray-300 hover:text-cyan-400 border border-gray-600/50 hover:border-cyan-500/50 rounded-lg transition-all duration-300 text-sm"
+                            className="px-4 py-2 bg-gray-800/50 hover:bg-gray-700/50 text-gray-300 hover:text-cyan-400 border border-gray-600/50 hover:border-cyan-500/50 rounded-lg transition-smooth text-sm"
                         >
                             Load Derivative Works
                         </button>
@@ -195,51 +196,53 @@ const ChildrenList = ({ ipId, isOpen, totalCount }) => {
                 )
             ) : (
                 <div className="space-y-2">
-                    {children.map((child, index) => (
-                        <div key={index} className="bg-gray-800/30 rounded-lg p-3 border border-gray-700/30 hover:border-cyan-500/50 transition-colors">
-                            <div className="flex items-center justify-between mb-2">
-                                <div className="flex items-center space-x-3">
-                                    <div className="w-8 h-8 rounded-lg overflow-hidden border border-gray-600 flex-shrink-0">
-                                        <img
-                                            src={getImageUrl(child)}
-                                            alt={child.name || 'Derivative Work'}
-                                            className="w-full h-full object-cover"
-                                            onError={(e) => {
-                                                e.target.src = '/favicon.png';
-                                            }}
-                                        />
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <h4 className="font-semibold text-gray-200 truncate text-sm">
-                                            {child.name || 'Unnamed Asset'}
-                                        </h4>
-                                        <a
-                                            href={`https://explorer.story.foundation/ipa/${child.ipId}`}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="text-xs text-cyan-400 hover:text-cyan-300 truncate font-mono transition-colors duration-200"
-                                            title={`View ${child.ipId} on Story Protocol Explorer`}
-                                        >
-                                            {child.ipId}
-                                        </a>
-                                    </div>
+                {children.map((child, index) => (
+                    <div key={index} className="bg-gray-800/30 rounded-lg p-3 border border-gray-700/30 hover:border-cyan-500/50 transition-colors">
+                        <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center space-x-2">
+                                <div className="w-6 h-6 rounded-full bg-cyan-500/20 flex items-center justify-center">
+                                    <span className="text-cyan-400 text-xs font-bold">{index + 1}</span>
                                 </div>
-                                <div className="text-right">
-                                    <span className="text-xs text-green-400 bg-green-900/30 px-2 py-1 rounded-full">
-                                        Derivative
-                                    </span>
+                                <div className="w-8 h-8 rounded-lg overflow-hidden border border-gray-600 flex-shrink-0">
+                                    <img
+                                        src={getImageUrl(child)}
+                                        alt={child.name || 'Derivative Work'}
+                                        className="w-full h-full object-cover"
+                                        onError={(e) => {
+                                            e.target.src = '/favicon.png';
+                                        }}
+                                    />
+                                </div>
+                                <div>
+                                    <div className="text-cyan-400 font-semibold text-sm">{child.name || 'Unnamed Asset'}</div>
+                                    <div className="text-gray-400 text-xs font-mono">
+                                        {child.ipId?.length > 20 
+                                            ? `${child.ipId.substring(0, 10)}...${child.ipId.substring(child.ipId.length - 10)}`
+                                            : child.ipId
+                                        }
+                                    </div>
                                 </div>
                             </div>
-                            <div className="flex items-center justify-between text-xs text-gray-500">
-                                <span>Processed: {child.processedAt ? new Date(child.processedAt).toLocaleDateString('en-US') : 'N/A'}</span>
-                                {child.caller && (
-                                    <span title={child.caller}>
-                                        {child.caller.slice(0, 6)}...{child.caller.slice(-4)}
-                                    </span>
-                                )}
+                            <a 
+                                href={`https://explorer.story.foundation/ipa/${child.ipId}`}
+                                target="_blank" 
+                                rel="noopener noreferrer" 
+                                className="text-cyan-400 hover:text-cyan-300 text-xs font-semibold"
+                            >
+                                View ↗
+                            </a>
+                        </div>
+                        <div className="flex items-center justify-between text-xs text-gray-500">
+                            <span className="font-mono">
+                                {child.processedAt ? new Date(child.processedAt).toLocaleDateString('en-US') : 'N/A'}
+                            </span>
+                            <div className="flex items-center space-x-1">
+                                <div className="w-1.5 h-1.5 bg-green-400 rounded-full"></div>
+                                <span>Derivative</span>
                             </div>
                         </div>
-                    ))}
+                    </div>
+                ))}
 
                     {hasMore && (
                         <div className="text-center pt-4">
@@ -250,7 +253,7 @@ const ChildrenList = ({ ipId, isOpen, totalCount }) => {
                                 </div>
                                 <div className="w-full bg-gray-700 rounded-full h-2">
                                     <div 
-                                        className="bg-cyan-500 h-2 rounded-full transition-all duration-300"
+                                        className="bg-cyan-500 h-2 rounded-full transition-smooth"
                                         style={{ width: `${(children.length / total) * 100}%` }}
                                     ></div>
                                 </div>
@@ -259,7 +262,7 @@ const ChildrenList = ({ ipId, isOpen, totalCount }) => {
                             <button
                                 onClick={loadMore}
                                 disabled={loadingMore}
-                                className="px-6 py-2 bg-gray-800/50 hover:bg-gray-700/50 text-gray-300 hover:text-cyan-400 border border-gray-600/50 hover:border-cyan-500/50 rounded-lg transition-all duration-300 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="px-6 py-2 bg-gray-800/50 hover:bg-gray-700/50 text-gray-300 hover:text-cyan-400 border border-gray-600/50 hover:border-cyan-500/50 rounded-lg transition-smooth text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 {loadingMore ? (
                                     <div className="flex items-center space-x-2">

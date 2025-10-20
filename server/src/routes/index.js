@@ -119,7 +119,6 @@ router.get('/health/check', assetController.checkApiHealth);
 router.get('/analytics/asset/:ipId', assetController.getAssetAnalytics);
 
 // Individual analytics endpoints for specific data types
-router.get('/analytics/asset/:ipId/transactions', assetController.getAssetTransactionHistory);
 router.get('/analytics/asset/:ipId/gas', assetController.getAssetGasAnalytics);
 router.get('/analytics/asset/:ipId/contract-interactions', assetController.getAssetContractInteractions);
 router.get('/analytics/asset/:ipId/performance', assetController.getAssetPerformanceMetrics);
@@ -128,7 +127,6 @@ router.get('/analytics/asset/:ipId/performance', assetController.getAssetPerform
 router.get('/analytics/network', assetController.getNetworkAnalytics);
 
 // Royalty analytics for specific owner
-router.get('/analytics/royalty/:ownerAddress', assetController.getRoyaltyAnalytics);
 
 // Dispute analytics for specific owner
 router.get('/analytics/disputes/:ownerAddress', assetController.getDisputeAnalytics);

@@ -1,7 +1,14 @@
 
-// server/src/index.js
-// server/src/index.js (paling atas)
-require('dotenv').config();
+// server/src/index.js (baris paling atas)
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
+
+// opsional: verifikasi (masked)
+if (!process.env.STORY_PROTOCOL_API_KEY) {
+  console.error('[ENV] STORY_PROTOCOL_API_KEY missing');
+} else {
+  console.log('[ENV] STORY_PROTOCOL_API_KEY loaded');
+}
 
 const express = require('express');
 const cors = require('cors');

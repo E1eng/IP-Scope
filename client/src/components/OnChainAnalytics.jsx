@@ -1,8 +1,96 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+
+// Komponen untuk menampilkan token breakdown di on-chain analytics
+const TokenBreakdownCard = ({ analytics }) => {
+    const [tokenBreakdown, setTokenBreakdown] = useState(null);
+    const [isLoading, setIsLoading] = useState(true);
+
+    useEffect(() => {
+        if (!analytics?.assetMetrics?.royaltyBreakdown) return;
+        
+        const fetchTokenBreakdown = async () => {
+            try {
+                setIsLoading(true);
+                setTokenBreakdown(analytics.assetMetrics.royaltyBreakdown);
+            } catch (error) {
+                console.error('Error loading token breakdown:', error);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        fetchTokenBreakdown();
+    }, [analytics?.assetMetrics?.royaltyBreakdown]);
+
+    if (isLoading) {
+        return (
+            <div className="bg-gray-800/50 rounded-lg p-4 mb-4">
+                <h3 className="text-lg font-semibold text-purple-300 mb-3">💰 Token Breakdown</h3>
+                <div className="text-center text-purple-400">Loading token breakdown...</div>
+            </div>
+        );
+    }
+
+    if (!tokenBreakdown || Object.keys(tokenBreakdown).length === 0) {
+        return (
+            <div className="bg-gray-800/50 rounded-lg p-4 mb-4">
+                <h3 className="text-lg font-semibold text-purple-300 mb-3">💰 Token Breakdown</h3>
+                <div className="text-center text-gray-500">No token breakdown available</div>
+            </div>
+        );
+    }
+
+    const totalValue = Object.values(tokenBreakdown).reduce((sum, token) => sum + parseFloat(token.total || 0), 0);
+
+    return (
+        <div className="bg-gray-800/50 rounded-lg p-4 mb-4">
+            <h3 className="text-lg font-semibold text-purple-300 mb-3">💰 Token Breakdown</h3>
+            <div className="space-y-3">
+                {Object.entries(tokenBreakdown).map(([symbol, data]) => {
+                    const amount = parseFloat(data.total || 0);
+                    const percentage = totalValue > 0 ? (amount / totalValue * 100).toFixed(1) : 0;
+                    
+                    return (
+                        <div key={symbol} className="flex items-center justify-between p-3 bg-gray-700/30 rounded-lg">
+                            <div className="flex items-center space-x-3">
+                                <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full flex items-center justify-center text-white font-bold text-sm">
+                                    {symbol.charAt(0)}
+                                </div>
+                                <div>
+                                    <div className="font-semibold text-white">{symbol}</div>
+                                    <div className="text-xs text-gray-400">
+                                        {data.count || 0} transactions
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="text-right">
+                                <div className="font-semibold text-white">
+                                    {amount.toFixed(6)} {symbol}
+                                </div>
+                                <div className="text-xs text-gray-400">
+                                    {percentage}% of total
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })}
+                
+                <div className="pt-3 border-t border-gray-700">
+                    <div className="flex justify-between items-center">
+                        <span className="font-semibold text-purple-300">Total Value:</span>
+                        <span className="font-bold text-white text-lg">
+                            {totalValue.toFixed(6)} tokens
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
 // Removed CryptoGuide import
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
 
 // Helper function untuk format numbers
 const formatNumber = (num) => {
@@ -388,7 +476,8 @@ const OnChainAnalytics = ({ ipId, isOpen }) => {
           { id: 'transactions', label: 'Activity', icon: '💳' },
           { id: 'gas', label: 'Costs', icon: '⛽' },
           { id: 'contracts', label: 'Contracts', icon: '🔗' },
-          { id: 'performance', label: 'Performance', icon: '📊' }
+          { id: 'performance', label: 'Performance', icon: '📊' },
+          { id: 'tokens', label: 'Tokens', icon: '💰' }
         ].map(tab => (
           <button
             key={tab.id}
@@ -526,6 +615,10 @@ const OnChainAnalytics = ({ ipId, isOpen }) => {
 
             {activeSection === 'performance' && (
               <PerformanceMetrics metrics={analytics.assetMetrics} isLoading={false} />
+            )}
+
+            {activeSection === 'tokens' && (
+              <TokenBreakdownCard analytics={analytics} />
             )}
           </>
         )}

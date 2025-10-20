@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
 
 // Helper untuk mengkonversi IPFS URI ke HTTP URL dan menangani kasus NULL/UNDEFINED
 const getImageUrl = (asset) => {
@@ -83,12 +84,15 @@ const WalletFilterForm = ({ onFetch, initialOwnerAddress, isSubmitting }) => {
     );
 };
 
+
 // --- Komponen Utama: AssetTable ---
 function AssetTable({ assets, isLoading, error, onAssetClick, royaltyTotalsMap, isRoyaltyTotalsLoading }) {
-    const formatUsdt = (num) => {
+    const [hoveredAssetId, setHoveredAssetId] = useState(null);
+    
+    const formatWip = (num) => {
         if (num === null || num === undefined || isNaN(num)) return '-';
         try {
-            return `$${Number(num).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDT`;
+            return `${Number(num).toFixed(6)} WIP`;
         } catch {
             return '-';
         }
@@ -208,10 +212,14 @@ function AssetTable({ assets, isLoading, error, onAssetClick, royaltyTotalsMap, 
                                 })}
                             </td>
                             <td className="p-6">
-                                <div className="text-right">
-                                  <span className="font-bold text-green-400 text-lg">
+                                <div className="text-right relative">
+                                  <span 
+                                    className="font-bold text-green-400 text-lg cursor-pointer hover:text-green-300 transition-colors"
+                                    onMouseEnter={() => setHoveredAssetId(asset.ipId)}
+                                    onMouseLeave={() => setHoveredAssetId(null)}
+                                  >
                                     {royaltyTotalsMap && royaltyTotalsMap.hasOwnProperty(asset.ipId)
-                                      ? formatUsdt(royaltyTotalsMap[asset.ipId])
+                                      ? formatWip(royaltyTotalsMap[asset.ipId])
                                       : (isRoyaltyTotalsLoading ? (
                                         <div className="flex items-center space-x-2">
                                           <div className="loading-spinner w-4 h-4"></div>
@@ -224,16 +232,21 @@ function AssetTable({ assets, isLoading, error, onAssetClick, royaltyTotalsMap, 
                             {/* Dispute Status Cell */}
                             <td className="p-6">
                                 <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold
-                                    ${asset.disputeStatus === 'Active' ? 'bg-red-500/20 text-red-300 border border-red-500/30' : 
-                                    asset.disputeStatus === 'Pending' ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30' : 
+                                    ${asset.disputeData?.activeDisputes > 0 ? 'bg-red-500/20 text-red-300 border border-red-500/30' : 
+                                    asset.disputeData?.pendingDisputes > 0 ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30' : 
+                                    asset.disputeData?.totalDisputes > 0 ? 'bg-orange-500/20 text-orange-300 border border-orange-500/30' :
                                     'bg-green-500/20 text-green-300 border border-green-500/30'}`
                                 }>
                                     <div className={`w-2 h-2 rounded-full mr-2 ${
-                                      asset.disputeStatus === 'Active' ? 'bg-red-400 animate-pulse' :
-                                      asset.disputeStatus === 'Pending' ? 'bg-yellow-400' :
+                                      asset.disputeData?.activeDisputes > 0 ? 'bg-red-400 animate-pulse' :
+                                      asset.disputeData?.pendingDisputes > 0 ? 'bg-yellow-400' :
+                                      asset.disputeData?.totalDisputes > 0 ? 'bg-orange-400' :
                                       'bg-green-400'
                                     }`}></div>
-                                    {asset.disputeStatus || 'None'}
+                                    {asset.disputeData?.totalDisputes > 0 ? 
+                                        `${asset.disputeData.totalDisputes} Dispute${asset.disputeData.totalDisputes > 1 ? 's' : ''}` : 
+                                        'No Disputes'
+                                    }
                                 </span>
                             </td>
                         </tr>

@@ -1,4 +1,6 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
+
 
 // Komponen utilitas untuk render SVG Icons
 const Icons = ({ type }) => {
@@ -89,5 +91,6 @@ function StatCard({ title, value, isWarning = false, icon, isLoading = false, er
         </div>
     );
 }
+
 
 export default StatCard;

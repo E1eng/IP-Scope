@@ -1,6 +1,7 @@
 // server/src/services/storyProtocol.service.js
 // CommonJS style (require/module.exports)
 // Dependency: axios
+console.log('[SERVICE] StoryProtocol service loaded with updated code');
 const axios = require('axios');
 const Decimal = require('decimal.js');
 
@@ -11,7 +12,7 @@ const https = require('https');
 // Create agents with connection pooling
 const httpAgent = new http.Agent({
     keepAlive: true,
-    maxSockets: 50,
+    maxSockets: 200,
     maxFreeSockets: 10,
     timeout: 60000,
     freeSocketTimeout: 30000
@@ -19,7 +20,7 @@ const httpAgent = new http.Agent({
 
 const httpsAgent = new https.Agent({
     keepAlive: true,
-    maxSockets: 50,
+    maxSockets: 200,
     maxFreeSockets: 10,
     timeout: 60000,
     freeSocketTimeout: 30000
@@ -29,6 +30,10 @@ const httpsAgent = new https.Agent({
 axios.defaults.httpAgent = httpAgent;
 axios.defaults.httpsAgent = httpsAgent;
 axios.defaults.timeout = 5000; // 5 second default timeout
+
+// Simple in-memory caches
+const royaltyDataCache = new Map(); // ipId -> { totalRoyaltiesByToken, licenseeMap }
+const royaltyProgressByIp = new Map(); // Retained for internal tracking (no external route)
 
 /**
  * Utility: Mengubah BigInt wei ke string readable (sesuai style kamu).
@@ -204,7 +209,7 @@ const limitedStoryScanGet = async (url, options = {}, retries = 2) => {
     try {
         const response = await axios.get(url, {
             ...options,
-            timeout: 10000, // Increased timeout for StoryScan
+            timeout: options.timeout || 30000, // Use provided timeout or default 30 seconds
             headers: {
                 ...options.headers,
                 'User-Agent': 'RoyaltyFlow/1.0 (StoryScan Rate Limited)'
@@ -232,6 +237,16 @@ const limitedStoryScanGet = async (url, options = {}, retries = 2) => {
         throw e;
     }
 };
+
+// Simple deterministic hash for round-robin key selection
+function hashString(str) {
+    let h = 0;
+    for (let i = 0; i < str.length; i++) {
+        h = (h << 5) - h + str.charCodeAt(i);
+        h |= 0;
+    }
+    return h;
+}
 
 // --- Global Story API rate limiter (token bucket) ---
 let apiTokens = STORYAPI_RPS;
@@ -296,18 +311,6 @@ const setTxDetailCache = (txHash, detail) => {
 };
 const getTxDetailCache = (txHash) => {
     const entry = cache.txDetailByHash.get(txHash);
-    if (entry && entry.expiresAt > nowMs()) return entry.value;
-    return null;
-};
-const setTokenPrice = (symbol, price) => {
-    if (!symbol || price === null || price === undefined) return;
-    try {
-        const dec = new Decimal(price);
-        cache.tokenPriceBySymbol.set(symbol, { value: dec, expiresAt: nowMs() + TOKEN_PRICE_TTL_MS });
-    } catch {}
-};
-const getTokenPrice = (symbol) => {
-    const entry = cache.tokenPriceBySymbol.get(symbol);
     if (entry && entry.expiresAt > nowMs()) return entry.value;
     return null;
 };
@@ -542,6 +545,9 @@ const startPortfolioAggregation = async (ownerAddress) => {
  * - returns normalized shape for assets and transactions
  */
 const fetchStoryApi = async (url, apiKey, body = {}, method = 'POST') => {
+    // Increase assets timeout; keep transactions short
+    const timeout = url.includes('transactions') ? 8000 : 40000;
+    
     const options = {
         method,
         url,
@@ -550,10 +556,10 @@ const fetchStoryApi = async (url, apiKey, body = {}, method = 'POST') => {
             'Content-Type': 'application/json',
         },
         data: body,
-        timeout: 20000, // Increased timeout for better reliability with conservative rate limiting
+        timeout: timeout,
     };
 
-    const fetchWithRetry = async (opts, retries = 1, backoffMs = 300) => {
+    const fetchWithRetry = async (opts, retries = 3, backoffMs = 500) => {
         let attempt = 0;
         // eslint-disable-next-line no-constant-condition
         while (true) {
@@ -562,7 +568,7 @@ const fetchStoryApi = async (url, apiKey, body = {}, method = 'POST') => {
                 return await limitedStoryApiRequest(opts);
             } catch (err) {
                 const status = err.response?.status;
-                const retriable = !status || status >= 500 || err.code === 'ECONNABORTED';
+                const retriable = !status || status >= 500 || err.code === 'ECONNABORTED' || /timeout/i.test(err.message || '');
                 if (attempt >= retries || !retriable) throw err;
                 // backoff
                 // eslint-disable-next-line no-await-in-loop
@@ -681,7 +687,17 @@ const fetchTransactionDetailFromStoryScan = async (txHash) => {
 
     try {
         const url = `${STORY_TRANSACTION_DETAIL_BASE_URL}/${txHash}`;
-        const resp = await limitedStoryScanGet(url, { headers: { 'X-Api-Key': storyScanApiKey }, timeout: 10000 });
+        // Pilih API key secara round-robin berdasarkan hash (deterministik)
+        const keys = Object.keys(process.env)
+            .filter(k => k === 'STORYSCAN_API_KEY' || k.startsWith('STORYSCAN_API_KEY_'))
+            .map(k => ({ name: k, value: (process.env[k] || '').trim() }))
+            .filter(kv => kv.value.length > 0);
+        const index = Math.abs(hashString(txHash)) % Math.max(keys.length, 1);
+        const chosen = keys.length > 0 ? keys[index] : { name: 'STORYSCAN_API_KEY', value: storyScanApiKey };
+        if (process.env.DEBUG_ROYALTY_FLOW === '1' || true) {
+            console.log(`[ROYALTY] KEY_USE tx=${txHash.substring(0,10)} key=${chosen.name} idx=${index}/${Math.max(keys.length,1)}`);
+        }
+        const resp = await limitedStoryScanGet(url, { headers: { 'X-Api-Key': chosen.value }, timeout: 60000 });
         const txData = resp.data || {};
 
         // prefer token_transfers first element if exists, else fallback to other fields
@@ -716,6 +732,35 @@ const fetchTransactionDetailFromStoryScan = async (txHash) => {
         const status = e.response?.status || 'Network Error';
         console.error(`[STORYSCAN ERROR] tx ${txHash} failed. Status: ${status}. Message: ${e.message}`);
         if (status === 429) console.error('>>> DIAGNOSTIC: StoryScan rate limit (429). Consider retry/backoff.');
+        // Retry up to 2x for network/timeout
+        const isTimeout = e.code === 'ECONNABORTED' || /timeout/i.test(e.message || '');
+        const isNetwork = /Network Error/i.test(e.message || '') || !e.response;
+        if (isTimeout || isNetwork) {
+            for (let attempt = 1; attempt <= 2; attempt++) {
+                try {
+                    await sleep(500 * attempt);
+                    const retryUrl = `${STORY_TRANSACTION_DETAIL_BASE_URL}/${txHash}`;
+                    const retry = await limitedStoryScanGet(retryUrl, { headers: { 'X-Api-Key': chosen.value }, timeout: 60000 });
+                    const txData2 = retry.data || {};
+                    let royaltyTransfer2 = null;
+                    if (Array.isArray(txData2.token_transfers) && txData2.token_transfers.length > 0) {
+                        royaltyTransfer2 = txData2.token_transfers[0];
+                    }
+                    if (royaltyTransfer2 && royaltyTransfer2.total && royaltyTransfer2.total.value) {
+                        const amount = BigInt(String(royaltyTransfer2.total.value));
+                        const decimals = parseInt(royaltyTransfer2.token?.decimals || 18, 10) || 18;
+                        const symbol = royaltyTransfer2.token?.symbol || 'UNKNOWN';
+                        const tokenAddress = royaltyTransfer2.token?.address_hash || null;
+                        const exchangeRateUsd = royaltyTransfer2.token?.exchange_rate ? String(royaltyTransfer2.token.exchange_rate) : null;
+                        const from = txData2.from?.hash || null;
+                        const timestamp = txData2.timestamp || null;
+                        return { amount, decimals, symbol, tokenAddress, exchangeRateUsd, from, timestamp };
+                    }
+                } catch (e2) {
+                    console.error(`[STORYSCAN RETRY ${attempt}] tx ${txHash} failed: ${e2.message}`);
+                }
+            }
+        }
         return { amount: 0n, decimals: 18, symbol: 'ETH', tokenAddress: null, exchangeRateUsd: null, from: null, timestamp: null };
     }
 };
@@ -735,44 +780,176 @@ const getAndAggregateRoyaltyEventsFromApi = async (ipId) => {
         throw new Error("ipId is required");
     }
 
-    // Original behavior: query AS-IS then lowercase fallback (no full pagination here)
-    const buildRequest = (id) => ({
-        where: { eventTypes: ["RoyaltyPaid"], ipIds: [id] },
-        pagination: { limit: 200 },
+    const aggrStart = Date.now();
+    const DEBUG_ROYALTY_FLOW = true; // central toggle for royalty flow logs
+    if (DEBUG_ROYALTY_FLOW) console.log(`[ROYALTY] START ipId=${ipId}`);
+
+    // Normalize ipId to checksum if possible, but still try AS-IS + lowercase fallback in loop below
+    let idPrimary = ipId;
+    try {
+        const { ethers } = require('ethers');
+        if (ethers?.utils?.getAddress) {
+            idPrimary = ethers.utils.getAddress(String(ipId));
+            if (DEBUG_ROYALTY_FLOW && idPrimary !== ipId) {
+                console.log(`[ROYALTY] NORMALIZED ipId to checksum: ${idPrimary}`);
+            }
+        }
+    } catch (_) {}
+
+    // Full pagination to get ALL events, not just 200
+    const buildRequest = (id, offset = 0, withEventTypes = true) => ({
+        where: withEventTypes ? { eventTypes: ["RoyaltyPaid"], ipIds: [id] } : { ipIds: [id] },
+        pagination: { limit: 100, offset },
         orderBy: "blockNumber",
         orderDirection: "desc"
     });
 
-    let txResp = await fetchStoryApi(STORY_TRANSACTIONS_API_BASE_URL, storyApiKey, buildRequest(ipId), 'POST');
-    let events = txResp.events || txResp.data || [];
+    let allEvents = [];
+    let offset = 0;
+    let hasMore = true;
+    let totalFetched = 0;
 
-    if ((!events || events.length === 0) && ipId.toLowerCase() !== ipId) {
-        txResp = await fetchStoryApi(STORY_TRANSACTIONS_API_BASE_URL, storyApiKey, buildRequest(ipId.toLowerCase()), 'POST');
-        events = txResp.events || txResp.data || [];
-    }
+    // Fetch all pages of events
+    let pageIndex = 0;
+    const inFlightPages = 3; // pipeline up to 3 pages concurrently
+    while (hasMore) {
+        const pageStartTs = Date.now();
+        const reqs = [];
+        for (let i = 0; i < inFlightPages; i++) {
+            reqs.push(fetchStoryApi(STORY_TRANSACTIONS_API_BASE_URL, storyApiKey, buildRequest(idPrimary, offset + (i * 100), true), 'POST'));
+        }
+        const resps = await Promise.allSettled(reqs);
+        let batchedEvents = [];
+        for (const r of resps) {
+            if (r.status === 'fulfilled') {
+                const ev = r.value?.events || r.value?.data || [];
+                if (Array.isArray(ev) && ev.length > 0) batchedEvents = batchedEvents.concat(ev);
+            }
+        }
+        let events = batchedEvents;
+
+        // If no events with original case, try lowercase
+        if ((!events || events.length === 0) && idPrimary.toLowerCase() !== idPrimary && offset === 0) {
+            const reqs2 = [];
+            for (let i = 0; i < inFlightPages; i++) {
+                reqs2.push(fetchStoryApi(STORY_TRANSACTIONS_API_BASE_URL, storyApiKey, buildRequest(idPrimary.toLowerCase(), offset + (i * 100), true), 'POST'));
+            }
+            const resps2 = await Promise.allSettled(reqs2);
+            let be2 = [];
+            for (const r of resps2) {
+                if (r.status === 'fulfilled') {
+                    const ev = r.value?.events || r.value?.data || [];
+                    if (Array.isArray(ev) && ev.length > 0) be2 = be2.concat(ev);
+                }
+            }
+            events = be2;
+        }
 
     if (!events || events.length === 0) {
-        if (DEBUG_AGGR_LOGS) console.log(`[AGGR RESULT] IP ID ${ipId}: No RoyaltyPaid events found.`);
+            hasMore = false;
+        } else {
+            allEvents = allEvents.concat(events);
+            totalFetched += events.length;
+            // Incremental cache write for events
+            try {
+                const existingPrimary = royaltyDataCache.get(idPrimary) || { events: [], detailed: [] };
+                royaltyDataCache.set(idPrimary, { events: allEvents.slice(), detailed: existingPrimary.detailed || [] });
+                const lowerKey = idPrimary.toLowerCase();
+                const existingLower = royaltyDataCache.get(lowerKey) || { events: [], detailed: [] };
+                royaltyDataCache.set(lowerKey, { events: allEvents.slice(), detailed: existingLower.detailed || [] });
+            } catch {}
+            if (DEBUG_ROYALTY_FLOW) {
+                const elapsed = Date.now() - pageStartTs;
+                console.log(`[ROYALTY] PAGE ipId=${idPrimary} page=${pageIndex} offset=${offset} fetched=${events.length} elapsedMs=${elapsed}`);
+            }
+            
+            // If we got less than the limit, we've reached the end
+            if (events.length < 100 * inFlightPages) {
+                hasMore = false;
+            } else {
+                offset += 100 * inFlightPages;
+            }
+            pageIndex += 1;
+        }
+    }
+
+    // Optional fallback: try without eventTypes filter if enabled via env
+    if (allEvents.length === 0 && process.env.FALLBACK_NO_EVENTTYPES === '1') {
+        if (DEBUG_ROYALTY_FLOW) console.log(`[ROYALTY] FALLBACK_NO_EVENTTYPES ipId=${idPrimary} enabled`);
+        let offset2 = 0; let hasMore2 = true; let pageIndex2 = 0; let fetched2 = 0;
+        while (hasMore2) {
+            const pageStartTs2 = Date.now();
+            const resp2 = await fetchStoryApi(STORY_TRANSACTIONS_API_BASE_URL, storyApiKey, buildRequest(idPrimary, offset2, false), 'POST');
+            const page2 = resp2.events || resp2.data || [];
+            if (!page2 || page2.length === 0) {
+                hasMore2 = false;
+            } else {
+                allEvents = allEvents.concat(page2);
+                fetched2 += page2.length;
+                if (DEBUG_ROYALTY_FLOW) {
+                    const elapsed2 = Date.now() - pageStartTs2;
+                    console.log(`[ROYALTY] PAGE2 ipId=${idPrimary} page=${pageIndex2} offset=${offset2} fetched=${page2.length} elapsedMs=${elapsed2}`);
+                }
+                if (page2.length < 100) hasMore2 = false; else offset2 += 100;
+                pageIndex2 += 1;
+            }
+        }
+        if (DEBUG_ROYALTY_FLOW) console.log(`[ROYALTY] PAGINATION2 ipId=${idPrimary} totalEvents=${fetched2} pages=${Math.ceil(fetched2 / 100)}`);
+    }
+
+    const events = allEvents;
+
+    if (!events || events.length === 0) {
+        if (DEBUG_ROYALTY_FLOW) console.log(`[ROYALTY] SKIP_NO_EVENTS ipId=${idPrimary} reason=No RoyaltyPaid events`);
         return { totalRoyaltiesByToken: new Map(), licenseeMap: new Map() };
     }
 
-    // Fetch StoryScan details (rate limited via cache, still uses Promise.all for this limited set)
-    const detailPromises = events.map(ev => {
-        const txHash = ev.transactionHash || ev.txHash || ev.hash || ev.transaction?.hash;
-        const cached = getTxDetailCache(txHash);
-        if (cached) return Promise.resolve({ txHash, detail: cached });
-        return fetchTransactionDetailFromStoryScan(txHash)
-            .then(detail => { setTxDetailCache(txHash, detail); return { txHash, detail }; })
-            .catch(() => ({ txHash, detail: { amount: 0n, decimals: 18, symbol: 'ETH', tokenAddress: null, exchangeRateUsd: null, from: null } }));
+    // Fetch StoryScan details using worker pool + queue with 24 workers (8 per API key x 3)
+    if (DEBUG_ROYALTY_FLOW) console.log(`[ROYALTY] SCAN_BEGIN ipId=${idPrimary} txCount=${events.length}`);
+    royaltyProgressByIp.set(idPrimary, { total: events.length, processed: 0, ok: 0, fail: 0, startedAt: Date.now() });
+    const txHashes = events
+        .map(ev => ev.transactionHash || ev.txHash || ev.hash || ev.transaction?.hash)
+        .filter(Boolean);
+
+    // Hitung jumlah API key StoryScan yang tersedia untuk mengatur worker secara dinamis
+    const scanKeysCount = Object.keys(process.env)
+        .filter(k => k === 'STORYSCAN_API_KEY' || k.startsWith('STORYSCAN_API_KEY_'))
+        .filter(k => (process.env[k] || '').trim().length > 0)
+        .length || 1;
+    // Target: 7 RPS per key => 7 worker per key (masing-masing 1 req/detik)
+    const dynamicWorkerCount = Math.max(7, Math.min(scanKeysCount * 7, 100));
+    if (DEBUG_ROYALTY_FLOW) console.log(`[ROYALTY] SCAN_CFG keys=${scanKeysCount} workers=${dynamicWorkerCount} pageSize=50 rps_per_key=7`);
+
+    const detailed = await processTxHashesWithWorkerPool(txHashes, {
+        pageSize: 100,
+        workerCount: dynamicWorkerCount,
+        perWorkerIntervalMs: 600, // turun jadi ~7rps per key, lebih responsif
+        timeoutMs: 15000,
+        onResult: (res) => {
+            try {
+                const keyA = idPrimary;
+                const keyB = idPrimary.toLowerCase();
+                const curA = royaltyDataCache.get(keyA) || { events: allEvents.slice(), detailed: [] };
+                curA.detailed = (curA.detailed || []).concat([res]);
+                royaltyDataCache.set(keyA, curA);
+                const curB = royaltyDataCache.get(keyB) || { events: allEvents.slice(), detailed: [] };
+                curB.detailed = (curB.detailed || []).concat([res]);
+                royaltyDataCache.set(keyB, curB);
+            } catch {}
+        }
     });
-    const detailed = await Promise.all(detailPromises);
+    if (DEBUG_ROYALTY_FLOW) console.log(`[ROYALTY] SCAN_DONE ipId=${idPrimary} detailedCount=${detailed.length}`);
+    // Cache data for reuse (ledger, quick summaries)
+    try {
+        royaltyDataCache.set(idPrimary, { events, detailed });
+    } catch {}
 
     const totalRoyaltiesByToken = new Map();
     const licenseeMap = new Map();
     let totalEthWei = 0n;
 
     for (const d of detailed) {
-        const txDetail = d.detail || {};
+        const txDetail = d?.detail || {};
         const amount = txDetail.amount || 0n;
         const symbol = txDetail.symbol || 'ETH';
         const from = txDetail.from || null;
@@ -805,13 +982,113 @@ const getAndAggregateRoyaltyEventsFromApi = async (ipId) => {
         }
     }
 
+    const aggrElapsed = Date.now() - aggrStart;
     if (totalEthWei > 0n) {
-        if (DEBUG_AGGR_LOGS) console.log(`[AGGR RESULT] IP ID ${ipId}: SUCCESS. Total ETH/WETH Wei: ${totalEthWei.toString()}`);
+        if (DEBUG_ROYALTY_FLOW) console.log(`[ROYALTY] RESULT ipId=${ipId} SUCCESS totalEthWei=${totalEthWei.toString()} elapsedMs=${aggrElapsed}`);
     } else {
-        if (DEBUG_AGGR_LOGS) console.log(`[AGGR RESULT] IP ID ${ipId}: No valuable transfers found (Final Sum: 0).`);
+        if (DEBUG_ROYALTY_FLOW) console.log(`[ROYALTY] RESULT ipId=${ipId} EMPTY elapsedMs=${aggrElapsed}`);
     }
 
     return { totalRoyaltiesByToken, licenseeMap };
+};
+
+
+// Worker-pool + queue to process StoryScan tx hashes with controlled parallelism
+// - Splits tasks into pages of 50
+// - Uses 24 workers (8 per API key x 3)
+// - Each worker processes max 1 task per second
+// - Respects existing caches via getTxDetailCache/setTxDetailCache in fetch
+const processTxHashesWithWorkerPool = async (
+    txHashes,
+    {
+        pageSize = 50,
+        workerCount = 24,
+        perWorkerIntervalMs = 1000,
+        timeoutMs = 60000
+    } = {}
+) => {
+    if (!Array.isArray(txHashes) || txHashes.length === 0) return [];
+
+    const results = [];
+    const DEBUG_ROYALTY_FLOW = true;
+
+    // Process in pages of 50 for stability
+    for (let pageStart = 0; pageStart < txHashes.length; pageStart += pageSize) {
+        const page = txHashes.slice(pageStart, pageStart + pageSize);
+        if (DEBUG_ROYALTY_FLOW) console.log(`[ROYALTY] WORK_PAGE start=${pageStart} size=${page.length} workers=${Math.min(workerCount, page.length)}`);
+
+        // Simple FIFO queue for this page
+        const queue = page.slice();
+        let active = 0;
+        let stopped = false;
+
+        const runWorker = async () => {
+            while (!stopped) {
+                const txHash = queue.shift();
+                if (!txHash) break;
+
+                try {
+                    // Check cache first
+                    const cached = getTxDetailCache(txHash);
+                    if (cached) {
+                        results.push({ txHash, detail: cached });
+                        // update progress
+                        try {
+                            for (const [ip, prog] of royaltyProgressByIp.entries()) {
+                                royaltyProgressByIp.set(ip, { ...prog, processed: prog.processed + 1, ok: prog.ok + 1 });
+                                break;
+                            }
+                        } catch {}
+                        if (DEBUG_ROYALTY_FLOW) console.log(`[ROYALTY] HIT_CACHE tx=${txHash}`);
+                    } else {
+                        const controller = new AbortController();
+                        const timeout = setTimeout(() => controller.abort(), timeoutMs);
+                        try {
+                            const detail = await fetchTransactionDetailFromStoryScan(txHash, { signal: controller.signal });
+                            setTxDetailCache(txHash, detail);
+                            results.push({ txHash, detail });
+                            try {
+                                for (const [ip, prog] of royaltyProgressByIp.entries()) {
+                                    royaltyProgressByIp.set(ip, { ...prog, processed: prog.processed + 1, ok: prog.ok + 1 });
+                                    break;
+                                }
+                            } catch {}
+                            if (DEBUG_ROYALTY_FLOW) console.log(`[ROYALTY] OK tx=${txHash}`);
+                        } catch (e) {
+                            results.push({ txHash, detail: { amount: 0n, decimals: 18, symbol: 'ETH', tokenAddress: null, exchangeRateUsd: null, from: null } });
+                            try {
+                                for (const [ip, prog] of royaltyProgressByIp.entries()) {
+                                    royaltyProgressByIp.set(ip, { ...prog, processed: prog.processed + 1, fail: prog.fail + 1 });
+                                    break;
+                                }
+                            } catch {}
+                            if (DEBUG_ROYALTY_FLOW) console.log(`[ROYALTY] FAIL tx=${txHash} err=${e?.message || 'unknown'}`);
+                        } finally {
+                            clearTimeout(timeout);
+                        }
+                    }
+                } finally {
+                    // Pace this worker to ~1 task/sec
+                    await sleep(perWorkerIntervalMs);
+                }
+            }
+        };
+
+        // Launch up to workerCount workers for this page
+        const workersToLaunch = Math.min(workerCount, queue.length);
+        const workerPromises = [];
+        for (let i = 0; i < workersToLaunch; i++) {
+            active += 1;
+            workerPromises.push(
+                runWorker().catch(() => {})
+            );
+        }
+
+        await Promise.all(workerPromises);
+        if (DEBUG_ROYALTY_FLOW) console.log(`[ROYALTY] WORK_PAGE_DONE start=${pageStart} accumulated=${results.length}`);
+    }
+
+    return results;
 };
 
 
@@ -944,9 +1221,29 @@ const getAssetsByOwner = async (ownerAddress, limit = 200, offset = 0, tokenCont
                         if (fb) a.disputeStatus = fb;
                     } catch {}
                 }
-                // If mediaType missing or UNKNOWN, try detect via nftMetadata.uri (ipfs)
+                // Simple image URL normalization - ensure both imageUrl and nftMetadata.image.cachedUrl
+                if (a.uri) {
+                    // Always set imageUrl
+                    a.imageUrl = a.uri.startsWith('ipfs://') 
+                        ? a.uri.replace('ipfs://', 'https://ipfs.io/ipfs/')
+                        : a.uri;
+                    
+                    // Only set nftMetadata.image.cachedUrl if it doesn't exist or is empty
+                    if (!a.nftMetadata) {
+                        a.nftMetadata = {};
+                    }
+                    if (!a.nftMetadata.image) {
+                        a.nftMetadata.image = {};
+                    }
+                    // Only set cachedUrl if it doesn't exist or is empty
+                    if (!a.nftMetadata.image.cachedUrl) {
+                        a.nftMetadata.image.cachedUrl = a.imageUrl;
+                    }
+                }
+                
+                // If mediaType missing or UNKNOWN, try detect via uri
                 const currentMedia = (a.mediaType || '').toUpperCase();
-                const uri = a?.nftMetadata?.image?.cachedUrl || a?.nftMetadata?.raw?.metadata?.image || a?.nftMetadata?.image?.originalUrl || a?.nftMetadata?.uri;
+                const uri = a?.nftMetadata?.image?.cachedUrl || a?.uri;
                 if ((!currentMedia || currentMedia === 'UNKNOWN') && uri) {
                     try {
                         const ct = await detectMediaTypeFromIpfs(uri);
@@ -959,58 +1256,64 @@ const getAssetsByOwner = async (ownerAddress, limit = 200, offset = 0, tokenCont
                     } catch {}
                 }
                 
-                // Set default royalty to 0, will be updated in batch processing
-                a.totalRoyaltyCollected = 0;
+                // Set default royalty and analytics to 0, will be updated in batch processing
+                a.totalRoyaltyCollected = '0.000000 WIP';
+                a.analytics = { totalRoyaltiesPaid: {} };
             }
         } catch (e) {
             // ignore disputes enrich failure
         }
 
-        // Batch process royalty data for better performance
+        // Use individual asset detail logic for all assets to ensure consistency
         if (data && data.length > 0) {
             try {
-                console.log(`[PERFORMANCE] Batch processing royalty data for ${data.length} assets`);
-                
-                // Process royalty data in parallel with maximum concurrency
-                const batchSize = 50; // Process 50 assets at a time for maximum performance
-                const batches = [];
-                for (let i = 0; i < data.length; i += batchSize) {
-                    batches.push(data.slice(i, i + batchSize));
-                }
-                
-                // Process all batches concurrently for maximum speed
-                const allPromises = batches.map(async (batch) => {
-                    const promises = batch.map(async (asset) => {
-                        try {
-                            // Add timeout for individual asset processing
-                            const timeoutPromise = new Promise((_, reject) => 
-                                setTimeout(() => reject(new Error('Timeout')), 1000)
-                            );
+                // Process each asset individually using the same logic as getAssetDetails
+                for (const asset of data) {
+                    try {
+                        const { totalRoyaltiesByToken } = await getAndAggregateRoyaltyEventsFromApi(asset.ipId);
+                        
+                        // Initialize analytics object
+                        asset.analytics = asset.analytics || {};
+                        asset.analytics.totalRoyaltiesPaid = {};
+                        
+                        if (totalRoyaltiesByToken && totalRoyaltiesByToken.size > 0) {
+                            let hasRoyalty = false;
                             
-                            const royaltyPromise = fetchRoyaltyTxDetailsForAsset(asset.ipId);
-                            const txs = await Promise.race([royaltyPromise, timeoutPromise]);
-                            
-                            let totalRoyaltyUsdt = new Decimal(0);
-                            for (const tx of txs) {
-                                const symbol = tx.symbol || 'UNKNOWN';
-                                const decimals = tx.decimals || 18;
-                                const usdt = computeUsdtValue(tx.amount, decimals, tx.exchangeRateUsd || 0);
-                                totalRoyaltyUsdt = totalRoyaltyUsdt.add(usdt);
+                            // Populate analytics.totalRoyaltiesPaid for all currencies
+                            for (const [symbol, data] of totalRoyaltiesByToken.entries()) {
+                                if (data && data.total && data.total > 0n) {
+                                    const amount = formatWeiToEther(data.total.toString());
+                                    const displaySymbol = symbol === 'ETH' ? 'IP' : symbol;
+                                    asset.analytics.totalRoyaltiesPaid[displaySymbol] = `${amount} ${displaySymbol}`;
+                                    hasRoyalty = true;
+                                }
                             }
-                            asset.totalRoyaltyCollected = Number(totalRoyaltyUsdt.toFixed(2));
-                        } catch (e) {
-                            asset.totalRoyaltyCollected = 0;
+                            
+                            // Set totalRoyaltyCollected (display in card)
+                            const wipData = totalRoyaltiesByToken.get('WIP');
+                            if (wipData && wipData.total > 0n) {
+                                const wipAmount = formatWeiToEther(wipData.total.toString());
+                                asset.totalRoyaltyCollected = `${wipAmount} WIP`;
+                            } else if (hasRoyalty) {
+                                // If no WIP but has other currencies, show first currency
+                                const firstEntry = Array.from(totalRoyaltiesByToken.entries())[0];
+                                const amount = formatWeiToEther(firstEntry[1].total.toString());
+                                const displaySymbol = firstEntry[0] === 'ETH' ? 'IP' : firstEntry[0];
+                                asset.totalRoyaltyCollected = `${amount} ${displaySymbol}`;
+                            } else {
+                                asset.totalRoyaltyCollected = '0.000000 WIP';
+                            }
+                        } else {
+                            asset.totalRoyaltyCollected = '0.000000 WIP';
                         }
-                    });
-                    
-                    return Promise.allSettled(promises);
-                });
-                
-                await Promise.allSettled(allPromises);
-                
-                console.log(`[PERFORMANCE] Completed batch processing royalty data`);
+                    } catch (e) {
+                        console.log(`[SERVICE] Asset ${asset.ipId} - Error: ${e.message}`);
+                        asset.totalRoyaltyCollected = '0.000000 WIP';
+                        asset.analytics = { totalRoyaltiesPaid: {} };
+                    }
+                }
             } catch (e) {
-                console.error('[PERFORMANCE] Error in batch processing royalty data:', e.message);
+                console.error('[SERVICE] Error processing royalty data:', e.message);
             }
         }
 
@@ -1203,8 +1506,8 @@ const fetchRoyaltyTxDetailsForAsset = async (ipId) => {
     // Use higher rate limit and better error handling for real data processing
     const detailed = await mapWithRpsLimit(txHashes, 9, async (txHash) => {
         try {
-            const cached = getTxDetailCache(txHash);
-            if (cached) return { txHash, detail: cached };
+        const cached = getTxDetailCache(txHash);
+        if (cached) return { txHash, detail: cached };
             
             // Add timeout for individual transaction detail fetch
             const timeoutPromise = new Promise((_, reject) => 
@@ -1213,8 +1516,8 @@ const fetchRoyaltyTxDetailsForAsset = async (ipId) => {
             
             const detailPromise = fetchTransactionDetailFromStoryScan(txHash);
             const detail = await Promise.race([detailPromise, timeoutPromise]);
-            setTxDetailCache(txHash, detail);
-            return { txHash, detail };
+        setTxDetailCache(txHash, detail);
+        return { txHash, detail };
         } catch (error) {
             console.log(`[PERFORMANCE] Error fetching detail for ${txHash}: ${error.message}`);
             return { txHash, detail: { amount: 0n, decimals: 18, symbol: 'ETH', tokenAddress: null, exchangeRateUsd: null, from: null, timestamp: null } };
@@ -1435,66 +1738,20 @@ const getAssetDetails = async (ipId) => {
 
     asset.analytics = analytics;
     asset.disputeStatus = assetDisputeStatus;
+    
+    // Set totalRoyaltyCollected from analytics data
+    if (analytics.totalRoyaltiesPaid && Object.keys(analytics.totalRoyaltiesPaid).length > 0) {
+        // Format as "X.XXXXXX WIP" for display consistency
+        const wipAmount = analytics.totalRoyaltiesPaid.WIP || '0.000000';
+        asset.totalRoyaltyCollected = wipAmount;
+    } else {
+        asset.totalRoyaltyCollected = '0.000000 WIP';
+    }
+    
     return asset;
 };
 
 
-/**
- * getRoyaltyTransactions(ipId)
- * - returns array of transactions with formatted value & timestamp
- * - robust: lowercase fallback + pagination + StoryScan rate-limit + caching
- */
-const getRoyaltyTransactions = async (ipId) => {
-    try {
-        if (!storyApiKey) {
-            // Gracefully degrade: without Story API key we cannot list events
-            return [];
-        }
-
-        // Use the same robust pagination used elsewhere (handles lowercase fallback internally)
-        const events = await fetchRoyaltyEventsPaginated(ipId, 200);
-        if (!Array.isArray(events) || events.length === 0) return [];
-
-        // Respect StoryScan 10 RPS and use cache
-        const txHashes = events
-            .map(ev => ev.transactionHash || ev.txHash || ev.hash || ev.transaction?.hash)
-            .filter(Boolean);
-
-        // Process ALL transactions for UI display - no limits
-        const detailed = await mapWithRpsLimit(txHashes, 9, async (txHash) => {
-            const cached = getTxDetailCache(txHash);
-            if (cached) return { txHash, detail: cached };
-            const detail = await fetchTransactionDetailFromStoryScan(txHash);
-            setTxDetailCache(txHash, detail);
-            return { txHash, detail };
-        });
-
-        // map to UI shape, filter >0
-        const mapped = detailed
-            .filter(d => d.detail && d.detail.amount && d.detail.amount > 0n)
-            .map(d => {
-                const amount = d.detail.amount;
-                const symbol = d.detail.symbol || 'ETH';
-                const decimals = d.detail.decimals || 18;
-                const from = d.detail.from || 'N/A';
-                const tsSec = normalizeTimestampSec(d.detail.timestamp);
-                const timestamp = tsSec ? (new Date(tsSec * 1000)).toISOString() : null;
-                return {
-                    txHash: d.txHash,
-                    from,
-                    value: `${formatTokenAmountWithDecimals(amount, decimals)} ${symbol}`,
-                    timestamp,
-                    rawAmount: amount.toString()
-                };
-            });
-
-        return mapped;
-    } catch (e) {
-        // Never throw to the controller; return empty list to avoid 500s in modal
-        console.error('[SERVICE] getRoyaltyTransactions failed', e.message);
-        return [];
-    }
-};
 
 
 
@@ -2049,196 +2306,65 @@ const getAssetRelationships = async (ipId) => {
     }
 };
 
-/**
- * getRoyaltyAnalytics(ownerAddress)
- * Comprehensive royalty analytics for a specific owner
- */
-const getRoyaltyAnalytics = async (ownerAddress) => {
-    try {
-        console.log(`[ANALYTICS] Fetching royalty analytics for owner: ${ownerAddress}`);
-        
-        // Get ALL assets for the owner (no pagination limit)
-        const assetsResponse = await getAssetsByOwner(ownerAddress, 1000, 0);
-        const assets = assetsResponse.data || [];
-        
-        if (assets.length === 0) {
-            return {
-                success: true,
-                data: {
-                    metrics: {
-                        totalEarnings: 0,
-                        totalAssets: 0,
-                        avgEarningsPerAsset: 0,
-                        totalTransactions: 0
-                    },
-                    topAssets: [],
-                    topLicensees: [],
-                    royaltyTrends: []
-                }
-            };
-        }
-
-        // Analyze each asset for royalty data using the existing royalty system
-        const assetAnalytics = [];
-        const licenseeMap = new Map();
-        const dailyEarnings = new Map();
-        let totalEarnings = new Decimal(0);
-        let totalTransactions = 0;
-
-        for (const asset of assets) {
-            try {
-                // Use the existing royalty transaction system with sampling for large datasets
-                const txs = await fetchRoyaltyTxDetailsForAsset(asset.ipId);
-                let assetEarnings = new Decimal(0);
-                let transactionCount = txs.length;
-                
-                // Calculate earnings from real royalty transactions
-                for (const tx of txs) {
-                    const symbol = tx.symbol || 'UNKNOWN';
-                    const decimals = tx.decimals || 18;
-                    const usdt = computeUsdtValue(tx.amount, decimals, tx.exchangeRateUsd || 0);
-                    assetEarnings = assetEarnings.add(usdt);
-                    
-                    // Track licensees
-                    if (tx.from) {
-                        const licenseeAddress = tx.from;
-                        if (!licenseeMap.has(licenseeAddress)) {
-                            licenseeMap.set(licenseeAddress, {
-                                address: licenseeAddress,
-                                transactionCount: 0,
-                                totalPaid: new Decimal(0)
-                            });
-                        }
-                        const licensee = licenseeMap.get(licenseeAddress);
-                        licensee.transactionCount++;
-                        licensee.totalPaid = licensee.totalPaid.add(usdt);
-                    }
-                }
-                
-                totalEarnings = totalEarnings.add(assetEarnings);
-                totalTransactions += transactionCount;
-
-                assetAnalytics.push({
-                    ipId: asset.ipId,
-                    name: asset.nftMetadata?.name || 'Unnamed Asset',
-                    royaltyEarnings: Number(assetEarnings.toFixed(2)),
-                    transactionCount: transactionCount,
-                    licenseeCount: licenseeMap.size,
-                    avgRoyaltyPerTransaction: transactionCount > 0 ? Number(assetEarnings.div(transactionCount).toFixed(2)) : 0,
-                    lastTransaction: asset.lastUpdatedAt || null
-                });
-
-                // Track licensees - simplified for now
-                // No licensee data available yet
-                
-                // Track daily earnings - simplified for now
-                // No daily earnings data available yet
-            } catch (error) {
-                console.warn(`[ANALYTICS] Failed to analyze asset ${asset.ipId}:`, error.message);
-                continue;
-            }
-        }
-
-        // Sort assets by earnings
-        const topAssets = assetAnalytics
-            .sort((a, b) => b.royaltyEarnings - a.royaltyEarnings)
-            .slice(0, 10);
-
-        // Sort licensees by total paid
-        const topLicensees = Array.from(licenseeMap.values())
-            .map(licensee => ({
-                address: licensee.address,
-                transactionCount: licensee.transactionCount,
-                totalPaid: Number(licensee.totalPaid.toFixed(2)),
-                avgPaymentPerTransaction: licensee.transactionCount > 0 ? Number(licensee.totalPaid.div(licensee.transactionCount).toFixed(2)) : 0
-            }))
-            .sort((a, b) => b.totalPaid - a.totalPaid)
-            .slice(0, 10);
-
-        // Generate royalty trends for last 7 days
-        const royaltyTrends = [];
-        const today = new Date();
-        for (let i = 6; i >= 0; i--) {
-            const date = new Date(today);
-            date.setDate(date.getDate() - i);
-            const dateStr = date.toISOString().split('T')[0];
-            const amount = dailyEarnings.get(dateStr) || 0;
-            
-            royaltyTrends.push({
-                date: date.toLocaleDateString('id-ID', { weekday: 'short', month: 'short', day: 'numeric' }),
-                amount: amount
-            });
-        }
-
-        const analytics = {
-            metrics: {
-                totalEarnings: Number(totalEarnings.toFixed(2)), // Already converted to USDT
-                totalAssets: assets.length,
-                avgEarningsPerAsset: assets.length > 0 ? Number(totalEarnings.div(assets.length).toFixed(2)) : 0,
-                totalTransactions: totalTransactions,
-                currency: 'USDT'
-            },
-            topAssets: topAssets,
-            topLicensees: topLicensees,
-            royaltyTrends: royaltyTrends
-        };
-
-        console.log(`[ANALYTICS] Successfully generated analytics for ${assets.length} assets`);
-        return {
-            success: true,
-            data: analytics
-        };
-
-    } catch (error) {
-        console.error('[ANALYTICS] Failed to generate royalty analytics:', error);
-        return {
-            success: false,
-            error: error.message,
-            data: null
-        };
-    }
-};
 
 // Get children assets using Story Protocol edges API
 const getChildrenAssets = async (parentIpId, limit = 200, offset = 0) => {
     try {
         const url = `https://api.storyapis.com/api/v4/assets/edges`;
-        const options = {
-            method: 'POST',
-            headers: {
-                'X-Api-Key': storyApiKey,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                orderBy: "blockNumber",
-                orderDirection: "desc",
-                pagination: {
-                    limit: limit,
-                    offset: offset
-                },
-                where: {
-                    parentIpId: parentIpId
-                }
-            })
-        };
+        const buildBody = (where) => ({
+            orderBy: "blockNumber",
+            orderDirection: "desc",
+            pagination: { limit, offset },
+            where
+        });
+        const headers = { 'X-Api-Key': storyApiKey, 'Content-Type': 'application/json' };
 
-        const response = await fetch(url, options);
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+        // Try candidates: AS-IS, lowercase, checksum, and parentIpId_in
+        const candidates = (() => {
+            const arr = [String(parentIpId)];
+            const low = String(parentIpId).toLowerCase();
+            if (low !== parentIpId) arr.push(low);
+            try {
+                const { ethers } = require('ethers');
+                if (ethers?.utils?.getAddress) arr.push(ethers.utils.getAddress(String(parentIpId)));
+            } catch {}
+            return Array.from(new Set(arr));
+        })();
+
+        let data = null;
+        for (const cand of candidates) {
+            // 1) parentIpId exact
+            let resp = await fetch(url, { method: 'POST', headers, body: JSON.stringify(buildBody({ parentIpId: cand })) });
+            if (resp.ok) {
+                const json = await resp.json();
+                const arr = json?.data || json?.edges || [];
+                if (Array.isArray(arr) && arr.length > 0) { data = json; break; }
+            }
+            // 2) parentIpId_in
+            resp = await fetch(url, { method: 'POST', headers, body: JSON.stringify(buildBody({ parentIpId_in: [cand] })) });
+            if (resp.ok) {
+                const json2 = await resp.json();
+                const arr2 = json2?.data || json2?.edges || [];
+                if (Array.isArray(arr2) && arr2.length > 0) { data = json2; break; }
+            }
         }
-        
-        const data = await response.json();
+        if (!data) {
+            // If still no data, do a final attempt with AS-IS to capture empty state
+            const resp = await fetch(url, { method: 'POST', headers, body: JSON.stringify(buildBody({ parentIpId })) });
+            if (!resp.ok) throw new Error(`HTTP error! status: ${resp.status}`);
+            data = await resp.json();
+        }
         
         // Debug logging (can be removed in production)
         console.log('Story Protocol API Response:', {
             dataKeys: Object.keys(data),
             pagination: data?.pagination,
-            childrenCount: data?.data?.length,
+            childrenCount: (data?.data || data?.edges || []).length,
             hasMore: data?.pagination?.hasMore
         });
         
         // Extract children from edges data
-        const children = data?.data || [];
+        const children = data?.data || data?.edges || [];
         
         // Try to get total from different possible locations
         let total = 0;
@@ -2258,21 +2384,55 @@ const getChildrenAssets = async (parentIpId, limit = 200, offset = 0) => {
         
         // Transform edges data to asset-like format for frontend
         const transformedChildren = children.map(edge => ({
-            ipId: edge.childIpId,
-            parentIpId: edge.parentIpId,
-            blockNumber: edge.blockNumber,
-            blockTimestamp: edge.blockTimestamp,
-            txHash: edge.txHash,
+            ipId: edge.childIpId || edge.child_ip_id || edge.child || edge.childIp || edge.childIpID,
+            parentIpId: edge.parentIpId || edge.parent_ip_id || edge.parent,
+            blockNumber: edge.blockNumber || edge.block_number,
+            blockTimestamp: edge.blockTimestamp || edge.block_timestamp,
+            txHash: edge.txHash || edge.transactionHash,
             caller: edge.caller,
-            licenseTokenId: edge.licenseTokenId,
-            licenseTermsId: edge.licenseTermsId,
-            licenseTemplate: edge.licenseTemplate,
+            licenseTokenId: edge.licenseTokenId || edge.license_token_id,
+            licenseTermsId: edge.licenseTermsId || edge.license_terms_id,
+            licenseTemplate: edge.licenseTemplate || edge.license_template,
             processedAt: edge.processedAt,
             // Add some default values for display
             name: `Derivative Work #${edge.id}`,
-            createdAt: edge.blockTimestamp,
+            createdAt: edge.blockTimestamp || edge.block_timestamp,
             royaltyRate: null // Will be fetched separately if needed
         }));
+
+        // Enrich children with real metadata (name, image) using where.ipIds
+        try {
+            const childIpIds = transformedChildren.map(c => c.ipId).filter(Boolean);
+            if (childIpIds.length > 0) {
+                const reqBody = {
+                    includeLicenses: false,
+                    moderated: false,
+                    orderBy: "blockNumber",
+                    orderDirection: "desc",
+                    pagination: { limit: childIpIds.length, offset: 0 },
+                    where: { ipIds: childIpIds }
+                };
+                const detailsResp = await fetchStoryApi(STORY_ASSETS_API_BASE_URL, storyApiKey, reqBody, 'POST');
+                const assets = detailsResp?.data || [];
+                const byId = new Map(assets.map(a => [a.ipId, a]));
+                for (const child of transformedChildren) {
+                    const a = byId.get(child.ipId);
+                    if (!a) continue;
+                    // Set proper name/title
+                    child.name = a.title || a.name || child.name;
+                    // Copy nftMetadata for image usage
+                    if (a.nftMetadata) child.nftMetadata = a.nftMetadata;
+                    // Resolve imageUrl
+                    if (!child.imageUrl) {
+                        let img = a?.nftMetadata?.image?.cachedUrl || a?.nftMetadata?.raw?.metadata?.image || a?.nftMetadata?.image?.originalUrl || a?.uri;
+                        if (typeof img === 'string' && img.startsWith('ipfs://')) {
+                            img = img.replace('ipfs://', 'https://ipfs.io/ipfs/');
+                        }
+                        if (img) child.imageUrl = img;
+                    }
+                }
+            }
+        } catch {}
         
         // Determine hasMore based on available data
         let hasMore = false;
@@ -2293,6 +2453,85 @@ const getChildrenAssets = async (parentIpId, limit = 200, offset = 0) => {
     } catch (error) {
         console.error('Error fetching children assets:', error);
         throw error;
+    }
+};
+
+/**
+ * getRoyaltyTransactions(ipId)
+ * - returns array of royalty transactions using cached data
+ * - NO additional API calls - uses data already calculated and cached
+ */
+const getRoyaltyTransactions = async (ipId) => {
+    try {
+        console.log(`[SERVICE] Getting royalty transactions for ${ipId} using cached data`);
+        
+        // Normalize cache keys: try AS-IS, checksum, and lowercase
+        const candidates = (() => {
+            const arr = [String(ipId)];
+            try {
+                const { ethers } = require('ethers');
+                if (ethers?.utils?.getAddress) arr.push(ethers.utils.getAddress(String(ipId)));
+            } catch {}
+            arr.push(String(ipId).toLowerCase());
+            return Array.from(new Set(arr));
+        })();
+
+        for (const key of candidates) {
+            if (!royaltyDataCache.has(key)) continue;
+            const cachedData = royaltyDataCache.get(key);
+            console.log(`[SERVICE] Found cached royalty data for ${ipId}:`, cachedData);
+            
+            // Prefer detailed per-tx cache if available (more accurate ledger)
+            if (Array.isArray(cachedData.detailed) && cachedData.detailed.length > 0) {
+                const txs = cachedData.detailed.map(d => {
+                    const sym = d?.detail?.symbol || 'ETH';
+                    const displaySymbol = sym === 'ETH' ? 'IP' : sym;
+                    const decimals = d?.detail?.decimals || 18;
+                    const amt = d?.detail?.amount || 0n;
+                    const formattedAmount = formatTokenAmountWithDecimals(amt, decimals, 6);
+                    return {
+                        txHash: d.txHash,
+                        from: d?.detail?.from || 'N/A',
+                        to: 'N/A',
+                        value: `${formattedAmount} ${displaySymbol}`,
+                        timestamp: d?.detail?.timestamp || null,
+                        rawAmount: amt.toString(),
+                        currency: displaySymbol
+                    };
+                }).filter(x => !!x);
+                console.log(`[SERVICE] Generated ${txs.length} transactions for ${ipId} from cached detailed data`);
+                return txs;
+            }
+
+            // Fallback to aggregate-by-token (less detailed)
+            const transactions = [];
+            if (cachedData.totalRoyaltiesByToken && cachedData.totalRoyaltiesByToken.size > 0) {
+                for (const [symbol, data] of cachedData.totalRoyaltiesByToken.entries()) {
+                    if (!data || !data.total || data.total === 0n) continue;
+                    const formattedAmount = formatTokenAmountWithDecimals(data.total, data.decimals || 18, 6);
+                    const displaySymbol = symbol === 'ETH' ? 'IP' : symbol;
+                    transactions.push({
+                        txHash: `royalty-${ipId}-${symbol}-0`,
+                        from: 'N/A',
+                        to: 'N/A',
+                        value: `${formattedAmount} ${displaySymbol}`,
+                        timestamp: new Date().toISOString(),
+                        rawAmount: (data.total || 0n).toString(),
+                        currency: displaySymbol
+                    });
+                }
+            }
+            console.log(`[SERVICE] Generated ${transactions.length} transactions for ${ipId} from cached aggregates`);
+            return transactions;
+        }
+        
+        // If no cached data, return empty array (no API calls)
+        console.log(`[SERVICE] No cached royalty data found for ${ipId}`);
+        return [];
+    } catch (e) {
+        // Never throw to the controller; return empty list to avoid 500s in modal
+        console.error('[SERVICE] getRoyaltyTransactions failed', e.message);
+        return [];
     }
 };
 
@@ -2320,6 +2559,12 @@ module.exports = {
     getProgress,
     // expose rate-limited StoryScan GET for other modules (routes)
     limitedStoryScanGet,
+    // progress accessor for routes
+    __getRoyaltyProgress: (ipId) => {
+        if (!ipId) return { total: 0, processed: 0, ok: 0, fail: 0 };
+        const prog = royaltyProgressByIp.get(ipId) || { total: 0, processed: 0, ok: 0, fail: 0 };
+        return prog;
+    },
     // Analytics functions
     getAssetAnalytics,
     getAssetTransactionHistory,
@@ -2332,7 +2577,6 @@ module.exports = {
     getAssetRelationships,
     
     // Royalty Analytics functions
-    getRoyaltyAnalytics,
     
     // Children Assets functions
     getChildrenAssets

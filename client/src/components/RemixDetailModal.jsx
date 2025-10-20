@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
 import LicenseCard from './LicenseCard';
 import DetailRow from './DetailRow';
 import ChildrenList from './ChildrenList';
 import { Link } from 'react-router-dom';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
 
 // Helper untuk konversi URL gambar (mirip dengan card di tabel)
 const getImageUrl = (asset) => {
@@ -21,11 +21,127 @@ const getImageUrl = (asset) => {
 };
 
 
+// Komponen untuk menampilkan semua currency royalty flow
+const CurrencyFlowDisplay = ({ asset }) => {
+    const [currencyData, setCurrencyData] = useState(null);
+    const [isLoading, setIsLoading] = useState(true);
+
+    useEffect(() => {
+        if (!asset?.ipId) return;
+
+        // 1) Coba gunakan data yang SUDAH ADA di asset (hindari panggilan ulang)
+        const fromProp = asset?.analytics?.totalRoyaltiesPaid;
+        if (fromProp && Object.keys(fromProp).length > 0) {
+            const parsedFromProp = {};
+            Object.entries(fromProp).forEach(([symbol, value]) => {
+                if (!value) return;
+                const displaySymbol = symbol === 'ETH' ? 'IP' : symbol;
+                parsedFromProp[displaySymbol] = value;
+            });
+            setCurrencyData(parsedFromProp);
+            setIsLoading(false);
+            return; // cukup pakai data yang sudah ada
+        }
+
+        // 2) Jika belum ada di prop, baru fetch detail
+        const fetchCurrencyData = async () => {
+            try {
+                setIsLoading(true);
+                const response = await axios.get(`${API_BASE_URL}/assets/${asset.ipId}`);
+                const assetData = response.data;
+
+                if (assetData?.analytics?.totalRoyaltiesPaid) {
+                    const parsedCurrencies = {};
+                    Object.entries(assetData.analytics.totalRoyaltiesPaid).forEach(([symbol, value]) => {
+                        if (value && value !== '0' && value !== '0.000000') {
+                            const displaySymbol = symbol === 'ETH' ? 'IP' : symbol;
+                            parsedCurrencies[displaySymbol] = value;
+                        }
+                    });
+                    setCurrencyData(parsedCurrencies);
+                } else {
+                    setCurrencyData({});
+                }
+            } catch (error) {
+                console.error('Error fetching currency data:', error);
+                setCurrencyData({});
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        fetchCurrencyData();
+    }, [asset?.ipId]);
+
+    if (isLoading) {
+        return (
+            <div className="bg-gray-800/50 rounded-lg p-4 mb-4 border border-gray-700/50">
+                <h3 className="font-semibold text-lg mb-3 text-purple-300">
+                    💰 Royalty Flow
+                </h3>
+                <div className="text-center text-gray-400">Loading currency data...</div>
+            </div>
+        );
+    }
+
+    if (!currencyData || Object.keys(currencyData).length === 0) {
+        return (
+            <div className="bg-gray-800/50 rounded-lg p-4 mb-4 border border-gray-700/50">
+                <h3 className="font-semibold text-lg mb-3 text-purple-300">
+                    💰 Royalty Flow
+                </h3>
+                <div className="text-center text-gray-400">No royalty data available</div>
+            </div>
+        );
+    }
+
+    // Sort currencies: WIP first, then by amount descending
+    const sortedCurrencies = Object.entries(currencyData).sort((a, b) => {
+        if (a[0] === 'WIP' && b[0] !== 'WIP') return -1;
+        if (b[0] === 'WIP' && a[0] !== 'WIP') return 1;
+        return parseFloat(b[1]) - parseFloat(a[1]);
+    });
+
+    return (
+        <div className="bg-gray-800/50 rounded-lg p-4 mb-4 border border-gray-700/50">
+            <h3 className="font-semibold text-lg mb-3 text-purple-300">
+                💰 Royalty Flow
+            </h3>
+            <div className="space-y-3">
+                {sortedCurrencies.map(([symbol, value]) => (
+                    <div key={symbol} className="flex items-center justify-between p-3 bg-gray-700/30 rounded-lg">
+                        <div className="flex items-center space-x-3">
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-sm ${
+                                symbol === 'WIP' ? 'bg-gradient-to-br from-yellow-500 to-orange-500' :
+                                symbol === 'IP' ? 'bg-gradient-to-br from-blue-500 to-purple-500' :
+                                'bg-gradient-to-br from-purple-500 to-blue-500'
+                            }`}>
+                                {symbol.charAt(0)}
+                            </div>
+                            <div>
+                                <span className="text-gray-300 font-medium">{symbol}</span>
+                                <div className="text-xs text-gray-400">Royalty Token</div>
+                            </div>
+                        </div>
+                        <div className="text-right">
+                            <span className="text-yellow-400 font-bold text-lg">{value}</span>
+                            <div className="text-xs text-gray-400">Total Earned</div>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
+
 // Komponen untuk tab "Royalty Ledger"
 const RoyaltyLedgerTab = ({ ipId }) => {
     const [transactions, setTransactions] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState(null);
+    const [totalCount, setTotalCount] = useState(0);
+    const [pageSize] = useState(20);
+    const [currentPage, setCurrentPage] = useState(1);
 
     useEffect(() => {
         if (!ipId) return;
@@ -33,16 +149,41 @@ const RoyaltyLedgerTab = ({ ipId }) => {
             setIsLoading(true);
             setError(null);
             try {
+                // Set timeout untuk mencegah stuck loading
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+                
                 try {
-                    const response = await axios.get(`${API_BASE_URL}/assets/${ipId}/royalty-transactions`);
-                    setTransactions(response.data || []);
+                    const response = await axios.get(`${API_BASE_URL}/assets/${ipId}/royalty-transactions`, {
+                        signal: controller.signal,
+                        timeout: 60000 // Increased to 60 seconds for large datasets
+                    });
+                    clearTimeout(timeoutId);
+                    const data = response.data || [];
+                    setTransactions(data);
+                    setTotalCount(data.length);
+                    setCurrentPage(1);
                 } catch (errPrimary) {
+                    clearTimeout(timeoutId);
                     // Fallback ke alias lama jika tersedia
-                    const response2 = await axios.get(`${API_BASE_URL}/assets/${ipId}/transactions`);
-                    setTransactions(response2.data || []);
+                    const response2 = await axios.get(`${API_BASE_URL}/assets/${ipId}/transactions`, {
+                        signal: controller.signal,
+                        timeout: 15000
+                    });
+                    const data = response2.data || [];
+                    setTransactions(data);
+                    setTotalCount(data.length);
+                    setCurrentPage(1);
                 }
             } catch (err) {
-                const errorMessage = err.response?.data?.message || "Failed to load royalty ledger.";
+                let errorMessage = "Failed to load royalty ledger.";
+                if (err.name === 'AbortError') {
+                    errorMessage = "Request timeout. Please try again.";
+                } else if (err.response?.data?.message) {
+                    errorMessage = err.response.data.message;
+                } else if (err.message) {
+                    errorMessage = err.message;
+                }
                 setError(errorMessage);
             } finally {
                 setIsLoading(false);
@@ -51,13 +192,40 @@ const RoyaltyLedgerTab = ({ ipId }) => {
         fetchLedger();
     }, [ipId]);
 
+    // (Removed) Progress polling UI
+
+    const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+    const startIndex = (currentPage - 1) * pageSize;
+    const endIndex = Math.min(startIndex + pageSize, totalCount);
+    const visibleTransactions = transactions.slice(startIndex, endIndex);
+    const goPrev = () => setCurrentPage(p => Math.max(1, p - 1));
+    const goNext = () => setCurrentPage(p => Math.min(totalPages, p + 1));
+
    if (isLoading) return <div className="text-center p-6 text-purple-400">Loading Royalty Ledger...</div>;
     if (error) return <div className="text-center p-6 text-red-400 bg-red-900/30 rounded-lg break-words">{error}</div>;
     if (transactions.length === 0) return <div className="text-center p-6 text-gray-500">No royalty payment events found.</div>;
 
     return (
         <div className="space-y-3 text-sm">
-            {transactions.map(tx => (
+            {/* Header dengan total count */}
+            <div className="flex justify-between items-center mb-4 p-3 bg-gray-800/30 rounded-lg border border-gray-700/50">
+                <span className="text-purple-300 font-semibold">
+                    Showing {totalCount === 0 ? 0 : startIndex + 1}-{endIndex} of {totalCount} transactions
+                </span>
+                <span className="text-gray-400 text-sm">
+                    Total Royalty: {transactions.reduce((sum, tx) => {
+                        // Parse value string like "0.05 WIP" or "0.1 IP"
+                        const valueStr = tx.value || '0';
+                        const match = valueStr.match(/(\d+\.?\d*)/);
+                        return sum + (match ? parseFloat(match[1]) : 0);
+                    }, 0).toFixed(6)} WIP
+                </span>
+            </div>
+
+            {/* Progress bar removed per request */}
+            
+            {/* Transactions list */}
+            {visibleTransactions.map(tx => (
                 <div key={tx.txHash} className="p-3 bg-gray-800/50 rounded-lg border border-gray-700/50 hover:border-purple-600 transition-colors">
                     <div className="flex justify-between items-center mb-1">
                         <span className="font-mono text-sm text-green-400 font-bold">{tx.value}</span>
@@ -76,6 +244,21 @@ const RoyaltyLedgerTab = ({ ipId }) => {
                     </div>
                 </div>
             ))}
+            
+            {/* Pagination Controls */}
+            {totalCount > pageSize && (
+                <div className="flex items-center justify-center gap-3 pt-4">
+                    <button onClick={goPrev} disabled={currentPage === 1} className="px-3 py-1 rounded bg-gray-800 text-gray-200 disabled:opacity-50">
+                        Prev
+                    </button>
+                    <span className="text-gray-400 text-xs">
+                        Page {currentPage} / {totalPages}
+                    </span>
+                    <button onClick={goNext} disabled={currentPage === totalPages} className="px-3 py-1 rounded bg-gray-800 text-gray-200 disabled:opacity-50">
+                        Next
+                    </button>
+                </div>
+            )}
         </div>
     );
 };
@@ -133,10 +316,18 @@ const TopLicenseesTab = ({ ipId }) => {
 // Komponen Utama KONTEN (Bukan Modal Sebenarnya Lagi)
 const RemixDetailModalContent = ({ asset, onClose, isLoading }) => {
   const [activeTab, setActiveTab] = useState('details');
-  const [detail, setDetail] = useState(asset);
+  const [detail, setDetail] = useState(null); // Start with null to avoid showing incomplete data
   const [totalChildren, setTotalChildren] = useState(asset?.childrenCount || null);
   const [totalDescendants, setTotalDescendants] = useState(asset?.descendantsCount || null);
-  const [loadingChildren, setLoadingChildren] = useState(!asset?.childrenCount);
+        const [loadingChildren, setLoadingChildren] = useState(false); // No loading needed
+
+  // DEBUG: Log asset data to see what we're receiving
+  // console.log('[MODAL DEBUG] Asset prop received:', {
+  //   title: asset?.title,
+  //   creator: asset?.creator,
+  //   ipId: asset?.ipId,
+  //   fullAsset: asset
+  // });
 
   useEffect(() => {
     setActiveTab('details');
@@ -145,48 +336,37 @@ const RemixDetailModalContent = ({ asset, onClose, isLoading }) => {
   // Fetch detail saat modal dibuka
   useEffect(() => {
     let cancelled = false;
-    setDetail(asset);
     
-    // If we already have childrenCount from props, don't show loading
-    if (asset?.childrenCount !== undefined) {
-      setTotalChildren(asset.childrenCount);
-      setTotalDescendants(asset.descendantsCount || asset.childrenCount);
-      setLoadingChildren(false);
-    } else {
-      setLoadingChildren(true);
-    }
+    // Initialize with asset data first
+    setTotalChildren(asset?.childrenCount || 0);
+    setTotalDescendants(asset?.descendantsCount || asset?.childrenCount || 0);
+    
+        // Always fetch from API to get complete data including pilTerms and royaltyPolicy
     
     const load = async () => {
       try {
         if (!asset?.ipId) {
-          if (!cancelled) {
-            setLoadingChildren(false);
-          }
           return;
         }
         const resp = await axios.get(`${API_BASE_URL}/assets/${asset.ipId}`);
         if (!cancelled) {
           const assetData = resp.data || asset;
+          // Set detail with complete data from API immediately
           setDetail(assetData);
           
-          // Debug logging
-          console.log('Asset Detail API Response:', {
-            childrenCount: assetData.childrenCount,
-            descendantsCount: assetData.descendantsCount,
-            assetData: assetData
-          });
-          
-          // Use childrenCount and descendantsCount from API response
-          setTotalChildren(assetData.childrenCount || 0);
-          setTotalDescendants(assetData.descendantsCount || 0);
-          setLoadingChildren(false);
+          // Update children counts from API data
+          if (assetData.childrenCount !== undefined) {
+            setTotalChildren(assetData.childrenCount);
+          }
+          if (assetData.descendantsCount !== undefined) {
+            setTotalDescendants(assetData.descendantsCount);
+          }
         }
-      } catch (_) {
-        // keep minimal detail and use asset data if available
+      } catch (error) {
+        // On error, fallback to asset prop data
         if (!cancelled) {
-          setTotalChildren(asset?.childrenCount || 0);
-          setTotalDescendants(asset?.descendantsCount || 0);
-          setLoadingChildren(false);
+          console.error('Error loading asset details:', error);
+          setDetail(asset);
         }
       }
     };
@@ -194,36 +374,115 @@ const RemixDetailModalContent = ({ asset, onClose, isLoading }) => {
     return () => { cancelled = true; };
   }, [asset?.ipId]);
 
-  const formattedDate = detail?.createdAt ? new Date(detail.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Not Provided';
-  const creatorName = detail?.nftMetadata?.raw?.metadata?.creators?.[0]?.name || 'Not Provided';
-  // Determine media type with better fallback logic
-  const getMediaType = () => {
-    if (detail?.mediaType && detail.mediaType !== 'UNKNOWN') {
-      return detail.mediaType;
+  // Use detail if available, otherwise fallback to asset prop
+  // But prioritize better data from asset prop when detail has incomplete data
+  const currentAsset = useMemo(() => {
+    let result = detail || asset;
+    
+    // Ensure title is properly set from asset data
+    if (asset && !result.title) {
+      result.title = asset.title || asset.name || 'Untitled Asset';
     }
     
-    // Fallback: try to determine from nftMetadata
-    const imageUrl = detail?.nftMetadata?.image?.cachedUrl || 
-                    detail?.nftMetadata?.raw?.metadata?.image || 
-                    detail?.nftMetadata?.image?.originalUrl;
+    // If we have both detail and asset, merge them intelligently
+    if (detail && asset) {
+      result = {
+        ...detail,
+        // Keep better data from asset prop when detail has incomplete data
+        title: asset?.title || asset?.name || detail?.title || detail?.name || 'Untitled Asset',
+        creator: detail.creator && detail.creator !== 'Not Provided' ? detail.creator : asset.creator,
+        mediaType: detail.mediaType && detail.mediaType !== 'Not Specified' ? detail.mediaType : asset.mediaType,
+        description: asset.description || detail.description,
+        nftMetadata: asset.nftMetadata || detail.nftMetadata,
+        // Keep license data from detail (this is what we want from API)
+        pilTerms: detail.pilTerms,
+        royaltyPolicy: detail.royaltyPolicy,
+        // Keep other important data from detail, but prioritize asset data if it's better
+        childrenCount: asset.childrenCount || detail.childrenCount,
+        descendantsCount: asset.descendantsCount || detail.descendantsCount,
+        totalRoyaltyCollected: detail.totalRoyaltyCollected
+      };
+    }
     
-    if (imageUrl) {
-      const extension = imageUrl.split('.').pop()?.toLowerCase();
-      if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(extension)) {
+    // console.log('[MODAL DEBUG] currentAsset recalculated:', {
+    //   hasDetail: !!detail,
+    //   hasAsset: !!asset,
+    //   title: result?.title,
+    //   creator: result?.creator,
+    //   mediaType: result?.mediaType,
+    //   nftMetadata: result?.nftMetadata ? 'exists' : 'missing',
+    //   merged: detail && asset ? 'yes' : 'no'
+    // });
+    return result;
+  }, [detail, asset]);
+  
+  // Calculate derived values that depend on currentAsset
+  const formattedDate = useMemo(() => {
+    const result = currentAsset?.createdAt ? new Date(currentAsset.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Not Provided';
+    // console.log('[MODAL DEBUG] formattedDate recalculated:', result);
+    return result;
+  }, [currentAsset]);
+  
+  const creatorName = useMemo(() => {
+    const result = asset?.creator || currentAsset?.creator || currentAsset?.nftMetadata?.raw?.metadata?.creators?.[0]?.name || 'Not Provided';
+    // console.log('[MODAL DEBUG] creatorName recalculated:', result);
+    return result;
+  }, [currentAsset, asset]);
+  // Determine media type with better fallback logic
+  const mediaTypeDisplay = useMemo(() => {
+    // First try: nftMetadata.raw.metadata.mediaType
+    if (currentAsset?.nftMetadata?.raw?.metadata?.mediaType) {
+      // console.log('[MODAL DEBUG] mediaType from nftMetadata.raw.metadata:', currentAsset.nftMetadata.raw.metadata.mediaType);
+      return currentAsset.nftMetadata.raw.metadata.mediaType;
+    }
+    
+    // Second try: nftMetadata.image.contentType
+    if (currentAsset?.nftMetadata?.image?.contentType) {
+      const contentType = currentAsset.nftMetadata.image.contentType.toLowerCase();
+      if (contentType.startsWith('image/')) {
+        // console.log('[MODAL DEBUG] mediaType from contentType: IMAGE');
         return 'IMAGE';
       }
-      if (['mp4', 'webm', 'mov', 'avi'].includes(extension)) {
+      if (contentType.startsWith('video/')) {
+        // console.log('[MODAL DEBUG] mediaType from contentType: VIDEO');
         return 'VIDEO';
       }
-      if (['mp3', 'wav', 'ogg', 'm4a'].includes(extension)) {
+      if (contentType.startsWith('audio/')) {
+        // console.log('[MODAL DEBUG] mediaType from contentType: AUDIO');
         return 'AUDIO';
       }
     }
     
+    // Third try: currentAsset.mediaType
+    if (currentAsset?.mediaType && currentAsset.mediaType !== 'UNKNOWN') {
+      // console.log('[MODAL DEBUG] mediaType from currentAsset.mediaType:', currentAsset.mediaType);
+      return currentAsset.mediaType;
+    }
+    
+    // Fourth try: determine from image URL extension
+    const imageUrl = currentAsset?.nftMetadata?.image?.cachedUrl || 
+                    currentAsset?.nftMetadata?.raw?.metadata?.image || 
+                    currentAsset?.nftMetadata?.image?.originalUrl;
+    
+    if (imageUrl) {
+      const extension = imageUrl.split('.').pop()?.toLowerCase();
+      if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(extension)) {
+        // console.log('[MODAL DEBUG] mediaType from extension: IMAGE');
+        return 'IMAGE';
+      }
+      if (['mp4', 'webm', 'mov', 'avi'].includes(extension)) {
+        // console.log('[MODAL DEBUG] mediaType from extension: VIDEO');
+        return 'VIDEO';
+      }
+      if (['mp3', 'wav', 'ogg', 'm4a'].includes(extension)) {
+        // console.log('[MODAL DEBUG] mediaType from extension: AUDIO');
+        return 'AUDIO';
+      }
+    }
+    
+    // console.log('[MODAL DEBUG] mediaType: Not Specified');
     return 'Not Specified';
-  };
-  
-  const mediaTypeDisplay = getMediaType();
+  }, [currentAsset]);
   // UI/UX: Rombak tampilan agar sesuai untuk halaman penuh.
 return (
     <div 
@@ -241,13 +500,13 @@ return (
                 <div className="flex items-center gap-4 pr-10">
                   <div className="w-14 h-14 rounded-lg overflow-hidden border border-gray-700 flex-shrink-0">
                     <img
-                      src={getImageUrl(detail)}
+                      src={getImageUrl(currentAsset)}
                       alt="Asset Preview"
                       className="w-full h-full object-cover"
                       onError={(e) => { e.target.onerror = null; e.target.src = '/favicon.png'; }}
                     />
                   </div>
-                  <h2 className="text-2xl font-bold text-white tracking-tight line-clamp-2">{detail?.title || 'Untitled Asset'}</h2>
+                  <h2 className="text-2xl font-bold text-white tracking-tight line-clamp-2">{currentAsset?.title || asset?.title || asset?.name || 'Untitled Asset'}</h2>
                 </div>
                 <button 
                     onClick={onClose} 
@@ -275,8 +534,8 @@ return (
                                 {/* Large Image */}
                                 <div className="w-48 h-48 rounded-lg overflow-hidden border border-gray-700 flex-shrink-0">
                                     <img
-                                        src={getImageUrl(detail)}
-                                        alt={detail?.title || 'Asset Preview'}
+                                        src={getImageUrl(currentAsset)}
+                                        alt={currentAsset?.title || asset?.title || asset?.name || 'Asset Preview'}
                                         className="w-full h-full object-cover"
                                         onError={(e) => { e.target.onerror = null; e.target.src = '/favicon.png'; }}
                                     />
@@ -286,16 +545,17 @@ return (
                                 <div className="flex-1">
                                     <h3 className="text-lg font-semibold text-purple-300 mb-3">Description</h3>
                                     <p className="text-gray-300 leading-relaxed">
-                                        {detail?.description || detail?.nftMetadata?.description || 'No description available.'}
+                                        {currentAsset?.description || 'No description available.'}
                                     </p>
                                     
                                     {/* Additional Metadata */}
                                     <div className="mt-4 space-y-2 text-sm">
-                                        {detail?.nftMetadata?.raw?.metadata?.attributes && (
+                                        {(currentAsset?.nftMetadata?.raw?.metadata?.attributes && 
+                                          currentAsset.nftMetadata.raw.metadata.attributes.length > 0) && (
                                             <div>
                                                 <span className="text-purple-300 font-medium">Attributes:</span>
                                                 <div className="mt-1 flex flex-wrap gap-2">
-                                                    {detail.nftMetadata.raw.metadata.attributes.slice(0, 4).map((attr, index) => (
+                                                    {currentAsset.nftMetadata.raw.metadata.attributes.slice(0, 4).map((attr, index) => (
                                                         <span 
                                                             key={index}
                                                             className="bg-gray-700/50 px-2 py-1 rounded text-xs text-gray-300"
@@ -303,26 +563,26 @@ return (
                                                             {attr.trait_type}: {attr.value}
                                                         </span>
                                                     ))}
-                                                    {detail.nftMetadata.raw.metadata.attributes.length > 4 && (
+                                                    {currentAsset.nftMetadata.raw.metadata.attributes.length > 4 && (
                                                         <span className="text-gray-500 text-xs">
-                                                            +{detail.nftMetadata.raw.metadata.attributes.length - 4} more
+                                                            +{currentAsset.nftMetadata.raw.metadata.attributes.length - 4} more
                                                         </span>
                                                     )}
                                                 </div>
                                             </div>
                                         )}
                                         
-                                        {detail?.uri && (
+                                        {currentAsset?.uri && (
                                             <div>
                                                 <span className="text-purple-300 font-medium">URI:</span>
                                                 <a 
-                                                    href={detail.uri}
+                                                    href={currentAsset.uri}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
                                                     className="text-blue-400 hover:text-blue-300 ml-2 transition-colors break-all"
                                                     title="View on IPFS"
                                                 >
-                                                    {detail.uri}
+                                                    {currentAsset.uri}
                                                 </a>
                                             </div>
                                         )}
@@ -331,32 +591,33 @@ return (
                             </div>
                         </div>
                         
-                        <LicenseCard asset={detail} />
+                        <LicenseCard asset={currentAsset} />
+                            <CurrencyFlowDisplay asset={currentAsset} />
                         <div className="space-y-1 pt-4 border-t border-gray-700 text-sm">
                             <h3 className="font-semibold text-purple-300 mb-2">Key Details</h3>
-                            <DetailRow label="IP ID" value={detail?.ipId} />
+                            <DetailRow label="IP ID" value={currentAsset?.ipId} />
                             <DetailRow label="Media Type" value={mediaTypeDisplay} />
                             <DetailRow label="Creator" value={creatorName} />
                             <DetailRow label="Date Created" value={formattedDate} />
                             <DetailRow 
                                 label="Direct Derivative Works" 
-                                value={loadingChildren ? "Loading..." : (totalChildren !== null ? totalChildren.toLocaleString() : "0")} 
+                                value={currentAsset?.childrenCount?.toLocaleString() || "0"} 
                             />
                             <DetailRow 
                                 label="Total Descendants" 
-                                value={loadingChildren ? "Loading..." : (totalDescendants !== null ? totalDescendants.toLocaleString() : "0")} 
+                                value={currentAsset?.descendantsCount?.toLocaleString() || "0"}
                             />
-                            {detail?.tokenContract && <DetailRow label="Token Contract" value={detail.tokenContract} />}
+                            {currentAsset?.tokenContract && <DetailRow label="Token Contract" value={currentAsset.tokenContract} />}
                         </div>
                     </div>
                 )}
-                {activeTab === 'derivatives' && <ChildrenList ipId={detail?.ipId} isOpen={true} totalCount={totalChildren || 0} />}
-                {activeTab === 'ledger' && <RoyaltyLedgerTab ipId={detail?.ipId} />}
-                {activeTab === 'licensees' && <TopLicenseesTab ipId={detail?.ipId} />}
+                {activeTab === 'derivatives' && <ChildrenList ipId={currentAsset?.ipId} isOpen={true} totalCount={currentAsset?.childrenCount || 0} />}
+      {activeTab === 'ledger' && <RoyaltyLedgerTab ipId={currentAsset?.ipId} />}
+                {activeTab === 'licensees' && <TopLicenseesTab ipId={currentAsset?.ipId} />}
             </div>
         </div>
         <footer className="p-6 flex-shrink-0 border-t border-purple-900/50">
-            <a href={`https://explorer.story.foundation/ipa/${detail?.ipId}`} target="_blank" rel="noopener noreferrer" className="w-full text-center block p-3 font-bold bg-purple-600 rounded-lg hover:bg-purple-700 transition-colors text-white">
+            <a href={`https://explorer.story.foundation/ipa/${currentAsset?.ipId}`} target="_blank" rel="noopener noreferrer" className="w-full text-center block p-3 font-bold bg-purple-600 rounded-lg hover:bg-purple-700 transition-colors text-white">
                 View on Explorer
             </a>
         </footer>

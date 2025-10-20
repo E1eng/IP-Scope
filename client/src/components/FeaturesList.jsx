@@ -1,4 +1,6 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
+
 
 const FeaturesList = () => {
   const features = [
@@ -120,6 +122,7 @@ const FeaturesList = () => {
           <span className="text-white font-semibold">More features coming soon!</span>
         </div>
       </div>
+      
     </div>
   );
 };

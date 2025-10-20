@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 
+
 const API_BASE_URL = 'http://localhost:3001/api';
 
 const ChildrenList = ({ ipId, isOpen, totalCount }) => {
@@ -11,7 +12,9 @@ const ChildrenList = ({ ipId, isOpen, totalCount }) => {
     const [hasMore, setHasMore] = useState(false);
     const [total, setTotal] = useState(totalCount || 0);
     const [offset, setOffset] = useState(0);
-    const limit = 200;
+    const limit = 50; // safer page size
+
+
 
     const fetchChildren = async (reset = false) => {
         if (!ipId || !isOpen) return;
@@ -21,34 +24,59 @@ const ChildrenList = ({ ipId, isOpen, totalCount }) => {
         setError(null);
 
         try {
-            const response = await axios.get(`${API_BASE_URL}/assets/${ipId}/children`, {
-                params: {
-                    limit: limit,
-                    offset: currentOffset
-                }
+            let response = await axios.get(`${API_BASE_URL}/assets/${ipId}/children`, {
+                params: { limit, offset: currentOffset }
             });
 
-            const data = response.data.data.data;
-            const newChildren = data.children || [];
-            const newTotal = data.total || 0;
-            const newHasMore = data.hasMore || false;
+            const root = response.data || {};
+            
+            const payloadLevel1 = (root && typeof root === 'object') ? (root.data ?? {}) : {};
+            const payload = (payloadLevel1 && typeof payloadLevel1 === 'object') ? (payloadLevel1.data ?? payloadLevel1) : {};
+            
+            let newChildren = Array.isArray(payload.children) ? payload.children : [];
+            let newTotal = (typeof payload.total === 'number') ? payload.total : (root.pagination?.total || root.total || totalCount || 0);
+            let newHasMore = (typeof payload.hasMore === 'boolean') ? payload.hasMore : (root.pagination?.hasMore || root.hasMore || false);
+            if ((!Array.isArray(newChildren) || newChildren.length === 0) && Array.isArray(root?.data?.children)) {
+                newChildren = root.data.children;
+                
+            }
+            if ((!Array.isArray(newChildren) || newChildren.length === 0) && Array.isArray(root.children)) {
+                newChildren = root.children;
+                
+            }
+
+            // Fallback: if empty but we know there should be children, try lowercase ipId and smaller limit
+            if ((!Array.isArray(newChildren) || newChildren.length === 0) && totalCount > 0) {
+                try {
+                    const low = String(ipId).toLowerCase();
+                    response = await axios.get(`${API_BASE_URL}/assets/${low}/children`, {
+                        params: { limit: 20, offset: 0 }
+                    });
+                    const altRoot = response.data || {};
+                    const altPayloadL1 = (altRoot && typeof altRoot === 'object') ? (altRoot.data ?? {}) : {};
+                    const altPayload = (altPayloadL1 && typeof altPayloadL1 === 'object') ? (altPayloadL1.data ?? altPayloadL1) : {};
+                    newChildren = Array.isArray(altPayload.children) ? altPayload.children : [];
+                    const altTotal = (typeof altPayload.total === 'number') ? altPayload.total : (altRoot.pagination?.total || altRoot.total || totalCount);
+                    newTotal = altTotal;
+                    newHasMore = newChildren.length < newTotal;
+                } catch {}
+            }
+
+            // Trust larger of API total vs prop totalCount (from card)
+            if ((totalCount || 0) > (newTotal || 0)) newTotal = totalCount;
+            // If exactly one full page returned, assume there are more unless API explicitly says otherwise
+            if (Array.isArray(newChildren) && newChildren.length === limit && newHasMore === false) {
+                newHasMore = true;
+            }
             
             // Debug logging (can be removed in production)
-            console.log('ChildrenList API Response:', {
-                children: newChildren.length,
-                total: newTotal,
-                hasMore: newHasMore,
-                currentOffset: currentOffset,
-                limit: limit,
-                responseData: response.data,
-                childrenData: data
-            });
+            
 
             if (reset) {
-                setChildren(newChildren);
+                setChildren(Array.isArray(newChildren) ? newChildren : []);
                 setOffset(limit);
             } else {
-                setChildren(prev => [...prev, ...newChildren]);
+                setChildren(prev => [...prev, ...(Array.isArray(newChildren) ? newChildren : [])]);
                 setOffset(prev => prev + limit);
             }
             
@@ -58,16 +86,10 @@ const ChildrenList = ({ ipId, isOpen, totalCount }) => {
             }
             setHasMore(newHasMore);
             
-            // Debug state changes (can be removed in production)
-            console.log('ChildrenList State Update:', {
-                newTotal,
-                newHasMore,
-                childrenCount: reset ? newChildren.length : children.length + newChildren.length,
-                totalCount: totalCount,
-                willShowChildren: newChildren.length > 0
-            });
+            
         } catch (err) {
-            setError(err.response?.data?.message || 'Failed to load children assets');
+            console.error('ChildrenList fetch error:', err);
+            setError(err.response?.data?.message || err.message || 'Failed to load children assets');
         } finally {
             setLoading(false);
             setLoadingMore(false);
@@ -131,15 +153,28 @@ const ChildrenList = ({ ipId, isOpen, totalCount }) => {
                     Direct Derivative Works ({total ? total.toLocaleString() : '...'})
                 </h3>
                 <div className="text-sm text-gray-400">
-                    Showing {children.length} of {total ? total.toLocaleString() : '...'}
+                    Showing {children ? children.length : 0} of {total ? total.toLocaleString() : '...'}
                 </div>
             </div>
 
-            {children.length === 0 ? (
-                <div className="text-center py-12 text-gray-400">
-                    <div className="text-4xl mb-4">🆕</div>
-                    <p>No derivative works found</p>
-                </div>
+            {!children || !Array.isArray(children) || children.length === 0 ? (
+                total > 0 ? (
+                    <div className="text-center py-12 text-gray-400">
+                        <div className="text-4xl mb-4">🧩</div>
+                        <p className="mb-4">Derivatives detected ({total.toLocaleString()}) but not loaded yet.</p>
+                        <button
+                            onClick={() => fetchChildren(true)}
+                            className="px-6 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors"
+                        >
+                            Load Derivative Works
+                        </button>
+                    </div>
+                ) : (
+                    <div className="text-center py-12 text-gray-400">
+                        <div className="text-4xl mb-4">🆕</div>
+                        <p>No derivative works found</p>
+                    </div>
+                )
             ) : (
                 <div className="space-y-3">
                     {children.map((child, index) => (
@@ -185,6 +220,7 @@ const ChildrenList = ({ ipId, isOpen, totalCount }) => {
                                     </span>
                                 </div>
                             </div>
+                            
                         </div>
                     ))}
 

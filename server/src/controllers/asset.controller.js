@@ -55,18 +55,13 @@ const getAssetTransactions = async (req, res) => {
     const ipId = req.params.ipId;
     if (!ipId) return res.status(400).json({ message: 'ipId required' });
 
-  try {
     const list = await service.getRoyaltyTransactions(ipId);
     // Always return array; never 500 so modal doesn't break
     return res.json(Array.isArray(list) ? list : []);
   } catch (e) {
-    console.error('[CONTROLLER] getAssetTransactions fatal', e);
+    console.error('[CONTROLLER] getAssetTransactions error', e);
     // Graceful fallback: return empty array for the modal
     return res.json([]);
-  }
-  } catch (e) {
-    console.error('[CONTROLLER] getAssetTransactions error', e);
-    return res.status(500).json({ message: 'Internal server error', error: e.message });
   }
 };
 
@@ -538,57 +533,6 @@ const getAssetRelationships = async (req, res) => {
     }
 };
 
-/**
- * ========================================
- * ROYALTY ANALYTICS CONTROLLERS
- * ========================================
- */
-
-/**
- * GET /api/analytics/royalty/:ownerAddress
- * Get comprehensive royalty analytics for a specific owner
- */
-const getRoyaltyAnalytics = async (req, res) => {
-    try {
-        const { ownerAddress } = req.params;
-        
-        if (!ownerAddress) {
-            return res.status(400).json({
-                success: false,
-                error: 'Owner address is required',
-                message: 'Please provide a valid owner address',
-                timestamp: new Date().toISOString()
-            });
-        }
-
-        console.log(`[CONTROLLER] getRoyaltyAnalytics called for: ${ownerAddress}`);
-        
-        const result = await service.getRoyaltyAnalytics(ownerAddress);
-        
-        if (result.success) {
-            return res.json({
-                success: true,
-                data: result.data,
-                timestamp: new Date().toISOString()
-            });
-        } else {
-            return res.status(500).json({
-                success: false,
-                error: result.error,
-                message: 'Failed to fetch royalty analytics',
-                timestamp: new Date().toISOString()
-            });
-        }
-    } catch (error) {
-        console.error('[CONTROLLER] getRoyaltyAnalytics error:', error);
-        return res.status(500).json({
-            success: false,
-            message: 'Internal server error',
-            error: error.message,
-            timestamp: new Date().toISOString()
-        });
-    }
-};
 
 /**
  * GET /api/assets/:ipId/children?limit=20&offset=0
@@ -716,7 +660,6 @@ module.exports = {
   getAssetPerformanceMetrics,
   getNetworkAnalytics,
   getAssetRelationships,
-  getRoyaltyAnalytics,
   getChildrenAssets,
   getDisputeAnalytics
 };

@@ -1,6 +1,5 @@
 import React from 'react';
 
-// Komponen utilitas untuk render SVG Icons
 const Icons = ({ type }) => {
     switch (type) {
         case 'royalty':

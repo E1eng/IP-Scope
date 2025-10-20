@@ -8,9 +8,9 @@ import { NoRoyaltyData, NoDerivatives, NoTransactions } from './EmptyState';
 import { getModalProps, getButtonProps, announceToScreenReader } from '../utils/accessibility';
 import { Link } from 'react-router-dom';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
-// Helper untuk konversi URL gambar (mirip dengan card di tabel)
+// Helper 
 const getImageUrl = (asset) => {
     let url = asset?.nftMetadata?.image?.cachedUrl ||
               asset?.nftMetadata?.raw?.metadata?.image ||
@@ -20,11 +20,11 @@ const getImageUrl = (asset) => {
         if (url.startsWith('ipfs://')) return url.replace('ipfs://', 'https://ipfs.io/ipfs/');
         return url.trim();
     }
-    return '/favicon.png';
+    return '/favicon.ico';
 };
 
 
-// Komponen untuk menampilkan semua currency royalty flow
+// royalty flow
 const CurrencyFlowDisplay = ({ asset }) => {
     const [currencyData, setCurrencyData] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
@@ -32,7 +32,6 @@ const CurrencyFlowDisplay = ({ asset }) => {
     useEffect(() => {
         if (!asset?.ipId) return;
 
-        // 1) Coba gunakan data yang SUDAH ADA di asset (hindari panggilan ulang)
         const fromProp = asset?.analytics?.totalRoyaltiesPaid;
         if (fromProp && Object.keys(fromProp).length > 0) {
             const parsedFromProp = {};
@@ -43,10 +42,9 @@ const CurrencyFlowDisplay = ({ asset }) => {
             });
             setCurrencyData(parsedFromProp);
             setIsLoading(false);
-            return; // cukup pakai data yang sudah ada
+            return; 
         }
 
-        // 2) Jika belum ada di prop, baru fetch detail
         const fetchCurrencyData = async () => {
             try {
                 setIsLoading(true);
@@ -125,7 +123,7 @@ const CurrencyFlowDisplay = ({ asset }) => {
     );
 };
 
-// Komponen untuk tab "Royalty Ledger"
+// "Royalty Ledger"
 const RoyaltyLedgerTab = ({ ipId }) => {
     const [transactions, setTransactions] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -140,7 +138,7 @@ const RoyaltyLedgerTab = ({ ipId }) => {
             setIsLoading(true);
             setError(null);
             try {
-                // Set timeout untuk mencegah stuck loading
+                // Set timeout
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
                 
@@ -156,7 +154,7 @@ const RoyaltyLedgerTab = ({ ipId }) => {
                     setCurrentPage(1);
                 } catch (errPrimary) {
                     clearTimeout(timeoutId);
-                    // Fallback ke alias lama jika tersedia
+                    // Fallback
                     const response2 = await axios.get(`${API_BASE_URL}/assets/${ipId}/transactions`, {
                         signal: controller.signal,
                         timeout: 15000
@@ -314,7 +312,7 @@ const RoyaltyLedgerTab = ({ ipId }) => {
     );
 };
 
-// Komponen untuk tab "Top Licensees"
+// "Top Licensees"
 const TopLicenseesTab = ({ ipId }) => {
     const [licensees, setLicensees] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -387,7 +385,6 @@ const TopLicenseesTab = ({ ipId }) => {
     );
 };
 
-// Komponen Utama KONTEN (Bukan Modal Sebenarnya Lagi)
 const RemixDetailModalContent = ({ asset, onClose, isLoading }) => {
   const [activeTab, setActiveTab] = useState('details');
   const [detail, setDetail] = useState(null); // Start with null to avoid showing incomplete data
@@ -400,7 +397,7 @@ const RemixDetailModalContent = ({ asset, onClose, isLoading }) => {
     setActiveTab('details');
   }, [asset?.ipId]);
 
-  // Fetch detail saat modal dibuka
+  // Fetch detail
   useEffect(() => {
     let cancelled = false;
     
@@ -530,7 +527,6 @@ const RemixDetailModalContent = ({ asset, onClose, isLoading }) => {
     
     return 'Not Specified';
   }, [currentAsset]);
-  // UI/UX: Rombak tampilan agar sesuai untuk halaman penuh.
 return (
     <div 
       id="remix-modal"
@@ -558,7 +554,7 @@ return (
                       src={getImageUrl(currentAsset)}
                       alt={`Preview of ${currentAsset?.title || asset?.title || asset?.name || 'Untitled Asset'}`}
                       className="w-full h-full object-cover"
-                      onError={(e) => { e.target.onerror = null; e.target.src = '/favicon.png'; }}
+                      onError={(e) => { e.target.onerror = null; e.target.src = '/favicon.ico'; }}
                     />
                   </div>
                   <div className="flex-1 min-w-0">
@@ -678,7 +674,7 @@ return (
                                         src={getImageUrl(currentAsset)}
                                         alt={currentAsset?.title || asset?.title || asset?.name || 'Asset Preview'}
                                         className="w-full h-full object-cover"
-                                        onError={(e) => { e.target.onerror = null; e.target.src = '/favicon.png'; }}
+                                        onError={(e) => { e.target.onerror = null; e.target.src = '/favicon.ico'; }}
                                     />
                                 </div>
                                 
@@ -805,6 +801,4 @@ return (
     </div>
   );
 };
-
-// Ubah nama export agar sesuai dengan import di AssetDetailPage
 export default RemixDetailModalContent;

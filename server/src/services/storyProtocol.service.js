@@ -120,10 +120,7 @@ function clearRoyaltyCache(olderThanMs = 0) {
     } catch {}
 }
 
-/**
- * Utility: Mengubah BigInt wei ke string readable (sesuai style kamu).
- * Tetap mengembalikan string untuk aman dikirim ke client.
- */
+
 const formatWeiToEther = (weiAmount) => {
     try {
         const wei = BigInt(weiAmount);
@@ -1078,7 +1075,6 @@ const getAndAggregateRoyaltyEventsFromApi = async (ipId) => {
         .map(ev => ev.transactionHash || ev.txHash || ev.hash || ev.transaction?.hash)
         .filter(Boolean);
 
-    // Hitung jumlah API key StoryScan yang tersedia untuk mengatur worker secara dinamis
     const scanKeysCount = Object.keys(process.env)
         .filter(k => k === 'STORYSCAN_API_KEY' || k.startsWith('STORYSCAN_API_KEY_'))
         .filter(k => (process.env[k] || '').trim().length > 0)
@@ -1162,7 +1158,6 @@ const getAndAggregateRoyaltyEventsFromApi = async (ipId) => {
 
 // Worker-pool + queue to process StoryScan tx hashes with controlled parallelism
 // - Splits tasks into pages of 50
-// - Uses 24 workers (8 per API key x 3)
 // - Each worker processes max 1 task per second
 // - Respects existing caches via getTxDetailCache/setTxDetailCache in fetch
 const processTxHashesWithWorkerPool = async (

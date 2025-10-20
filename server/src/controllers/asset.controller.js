@@ -1,4 +1,3 @@
-// server/src/controllers/asset.controller.js
 const service = require('../services/storyProtocol.service.js');
 
 /**

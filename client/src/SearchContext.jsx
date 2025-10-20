@@ -1,9 +1,8 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 
-// State awal untuk pencarian (semua parameter yang harus dipertahankan)
 const initialSearchState = {
     results: [],
-    currentQuery: '', // Sekarang menyimpan alamat yang berhasil diidentifikasi (Owner atau Contract)
+    currentQuery: '', 
     currentAddress: '',
     currentTokenContract: '',
     offset: 0,

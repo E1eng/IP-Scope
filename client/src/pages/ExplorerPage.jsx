@@ -9,7 +9,7 @@ import { CardSkeleton, StaggeredSkeleton } from '../components/SkeletonComponent
 import { OptimisticButton, StatusIndicator } from '../components/OptimisticUpdates';
 import axios from 'axios';
 
-// Helper untuk mendeteksi media type dengan fallback logic yang sama dengan modal
+// Helper fallback logic
 const getMediaType = (asset) => {
     // First try: nftMetadata.raw.metadata.mediaType
     if (asset?.nftMetadata?.raw?.metadata?.mediaType) {
@@ -130,7 +130,7 @@ const ExplorerPage = () => {
       setCurrentTokenContract(query);
 
       // Fetch assets from real API
-      const response = await fetch(`http://localhost:3001/api/assets?ownerAddress=${query}&limit=50&offset=0`);
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001/api'}/assets?ownerAddress=${query}&limit=50&offset=0`);
       
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -179,7 +179,7 @@ const ExplorerPage = () => {
   const handleLoadMore = async () => {
     try {
       setIsLoading(true);
-      const response = await fetch(`http://localhost:3001/api/assets?ownerAddress=${currentQuery}&limit=50&offset=${results.length}`);
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001/api'}/assets?ownerAddress=${currentQuery}&limit=50&offset=${results.length}`);
       const data = await response.json();
       
       if (data.data && data.data.length > 0) {

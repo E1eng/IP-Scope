@@ -14,15 +14,9 @@ import {
 } from 'lucide-react';
 import { getSkipLinkProps, announceToScreenReader } from './utils/accessibility'; 
 
-// Placeholder untuk fitur masa depan
 const IPGraphPage = () => (
   <div className="flex items-center justify-center min-h-screen">
     <div className="text-center space-y-6 animate-fade-in">
-      <div className="w-24 h-24 bg-gradient-to-r from-purple-500 to-blue-500 rounded-2xl flex items-center justify-center mx-auto animate-float">
-        <svg className="w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-        </svg>
-      </div>
       <h2 className="text-4xl font-bold text-gradient">Flow Graph</h2>
       <p className="text-xl text-gray-400">Coming Soon</p>
     </div>
@@ -32,11 +26,6 @@ const IPGraphPage = () => (
 const MonitoringPage = () => (
   <div className="flex items-center justify-center min-h-screen">
     <div className="text-center space-y-6 animate-fade-in">
-      <div className="w-24 h-24 bg-gradient-to-r from-purple-500 to-blue-500 rounded-2xl flex items-center justify-center mx-auto animate-float">
-        <svg className="w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6a2 2 0 00-2-2H5a2 2 0 00-2 2v13M17 19V6a2 2 0 00-2-2h-2a2 2 0 00-2 2v13M13 19V6a2 2 0 00-2-2H9a2 2 0 00-2 2v13" />
-        </svg>
-      </div>
       <h2 className="text-4xl font-bold text-gradient">Monitoring</h2>
       <p className="text-xl text-gray-400">Coming Soon</p>
     </div>
@@ -53,16 +42,14 @@ const navItems = [
 function Sidebar() {
     return (
         <aside 
-          className="fixed left-0 top-0 h-screen w-72 bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950 backdrop-blur-xl border-r border-gray-800/50 p-8 z-50 flex flex-col animate-slide-down hidden lg:flex"
+          className="fixed left-0 top-0 h-screen w-72 bg-gray-950/95 backdrop-blur-xl border-r border-gray-800/50 p-8 z-50 flex flex-col animate-slide-down hidden lg:flex"
           role="navigation"
           aria-label="Main navigation"
         >
             <div className="flex items-center gap-4 mb-12 border-b pb-6 border-gray-800/50">
-                <div className="w-12 h-12 bg-gradient-to-r from-purple-500 to-blue-500 rounded-xl flex items-center justify-center animate-float">
-                    <img src="/favicon.png" alt="IPScope Logo" className="w-8 h-8" />
-                </div>
+                <img src="/favicon.ico" alt="IPScope Logo" className="w-16 h-16" />
                 <div>
-                  <span className="text-2xl font-black text-gradient">IP Scope</span>
+                  <span className="text-2xl font-black text-gray-100">IPScope</span>
                   <p className="text-xs text-gray-500 font-medium">v1.0.0</p>
                 </div>
             </div>
@@ -134,7 +121,7 @@ function App() {
   return (
     <BrowserRouter>
         <SearchProvider> 
-            <div className="min-h-screen w-full bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950 text-white font-sans flex">
+            <div className="min-h-screen w-full bg-gray-950 text-white font-sans flex">
                 {/* Skip to content link */}
                 <a {...getSkipLinkProps()}>
                   Skip to main content
@@ -143,18 +130,20 @@ function App() {
                 <Sidebar />
                 
                 {/* Mobile Menu Button */}
-                <button
-                  onClick={() => {
-                    setMobileMenuOpen(!mobileMenuOpen);
-                    announceToScreenReader(mobileMenuOpen ? 'Mobile menu closed' : 'Mobile menu opened');
-                  }}
-                  className="lg:hidden fixed top-4 left-4 z-50 p-3 bg-gray-900/80 backdrop-blur-sm border border-gray-800 rounded-xl hover:bg-gray-800/80 transition-smooth shadow-lg focus-ring-primary"
-                  aria-label={mobileMenuOpen ? 'Close mobile menu' : 'Open mobile menu'}
-                  aria-expanded={mobileMenuOpen}
-                  aria-controls="mobile-menu"
-                >
-                  <Menu className="w-6 h-6 text-gray-300" />
-                </button>
+                {!mobileMenuOpen && (
+                  <button
+                    onClick={() => {
+                      setMobileMenuOpen(true);
+                      announceToScreenReader('Mobile menu opened');
+                    }}
+                    className="lg:hidden fixed top-4 left-4 z-50 p-3 bg-gray-900/80 backdrop-blur-sm border border-gray-800 rounded-xl hover:bg-gray-800/80 transition-smooth shadow-lg focus-ring-primary"
+                    aria-label="Open mobile menu"
+                    aria-expanded={false}
+                    aria-controls="mobile-menu"
+                  >
+                    <Menu className="w-6 h-6 text-gray-300" />
+                  </button>
+                )}
 
                 {/* Mobile Sidebar Overlay */}
                 {mobileMenuOpen && (
@@ -169,23 +158,23 @@ function App() {
                     {/* Sidebar */}
                     <div 
                       id="mobile-menu"
-                      className="relative h-screen w-80 max-w-[85vw] bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950 border-r border-gray-800 flex flex-col animate-slide-in"
+                      className="relative h-screen w-80 max-w-[85vw] bg-gray-950/95 border-r border-gray-800 flex flex-col animate-slide-in"
                       role="navigation"
                       aria-label="Mobile navigation"
+                      onClick={(e) => e.stopPropagation()}
                     >
                       {/* Header */}
                       <div className="flex items-center justify-between p-6 border-b border-gray-800">
                         <div className="flex items-center gap-4">
-                          <div className="w-12 h-12 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-xl flex items-center justify-center">
-                            <img src="/favicon.png" alt="IPScope Logo" className="w-8 h-8" />
-                          </div>
+                          <img src="/favicon.ico" alt="IPScope Logo" className="w-16 h-16" />
                           <div>
                             <h1 className="text-xl font-bold text-gray-100">IPScope</h1>
                             <p className="text-xs text-gray-500">v1.0.0</p>
                           </div>
                         </div>
                         <button
-                          onClick={() => {
+                          onClick={(e) => {
+                            e.stopPropagation();
                             setMobileMenuOpen(false);
                             announceToScreenReader('Mobile menu closed');
                           }}
@@ -205,7 +194,8 @@ function App() {
                               <NavLink
                                 key={item.to}
                                 to={item.to}
-                                onClick={() => {
+                                onClick={(e) => {
+                                  e.stopPropagation();
                                   setMobileMenuOpen(false);
                                   announceToScreenReader(`Navigated to ${item.label}`);
                                 }}
@@ -251,7 +241,7 @@ function App() {
                 )}
 
                 {/* Main Content Area: padding kiri 72 untuk menampung sidebar */}
-                <div className="flex-grow lg:pl-72 w-full bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950">
+                <div className="flex-grow lg:pl-72 w-full bg-gray-950">
                     <main 
                       id="main-content"
                       className="w-full max-w-full mx-auto py-8 px-4 sm:px-6 lg:px-8"

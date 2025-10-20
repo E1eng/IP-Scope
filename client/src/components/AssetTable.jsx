@@ -6,27 +6,23 @@ import { NetworkError, ServerError, NotFoundError } from './ErrorState';
 import { NoAssetsFound } from './EmptyState';
 import { getInputProps, getButtonProps, getTableProps, announceToScreenReader } from '../utils/accessibility';
 
-// Helper untuk mengkonversi IPFS URI ke HTTP URL dan menangani kasus NULL/UNDEFINED
 const getImageUrl = (asset) => {
-    // 1. Prioritas tinggi dari metadata yang kaya (berdasarkan struktur yang Anda konfirmasi)
+    
     let url = asset.nftMetadata?.image?.cachedUrl ||
-              asset.nftMetadata?.raw?.metadata?.image || // Path dari raw metadata
-              asset.nftMetadata?.image?.originalUrl || // Path lain dari image object
-              asset.nftMetadata?.uri; // Fallback ke token URI
+              asset.nftMetadata?.raw?.metadata?.image || 
+              asset.nftMetadata?.image?.originalUrl || 
+              asset.nftMetadata?.uri; 
 
-    // 2. FIX KRITIS: Pastikan URL adalah string sebelum memanggil .startsWith
     if (typeof url === 'string') { 
-        // 3. Handle IPFS URI conversion
         if (url.startsWith('ipfs://')) {
             return url.replace('ipfs://', 'https://ipfs.io/ipfs/');
         }
         return url.trim(); 
     }
     // 4. Fallback to local logo if no valid URL is found
-    return "/favicon.png"; 
+    return "/favicon.ico"; 
 };
 
-// Helper untuk mendeteksi media type dengan fallback logic yang sama dengan modal
 const getMediaType = (asset) => {
     // First try: nftMetadata.raw.metadata.mediaType
     if (asset?.nftMetadata?.raw?.metadata?.mediaType) {
@@ -74,7 +70,7 @@ const getMediaType = (asset) => {
 };
 
 
-// --- Sub-Komponen: WalletFilterForm (Modern & Minimal) ---
+// --- WalletFilterForm (Modern & Minimal) ---
 const WalletFilterForm = ({ onFetch, initialOwnerAddress, isSubmitting }) => {
     const [addressInput, setAddressInput] = useState(initialOwnerAddress || ''); 
 
@@ -119,7 +115,7 @@ const WalletFilterForm = ({ onFetch, initialOwnerAddress, isSubmitting }) => {
                         type="text"
                         value={addressInput}
                         onChange={(e) => setAddressInput(e.target.value)}
-                        placeholder="Enter wallet address or token contract..."
+                        placeholder="Enter wallet address..."
                         className="w-full pl-12 pr-12 py-4 text-lg bg-gray-900/30 border border-gray-800/50 rounded-xl text-gray-100 placeholder-gray-500 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 focus:scale-[1.02] transition-smooth backdrop-blur-sm"
                         disabled={isSubmitting}
                         aria-describedby="search-help"
@@ -175,7 +171,7 @@ const WalletFilterForm = ({ onFetch, initialOwnerAddress, isSubmitting }) => {
 };
 
 
-// --- Komponen Utama: AssetTable ---
+// --- AssetTable ---
 function AssetTable({ assets, isLoading, error, onAssetClick, royaltyTotalsMap, isRoyaltyTotalsLoading }) {
     const [hoveredAssetId, setHoveredAssetId] = useState(null);
     
@@ -302,7 +298,7 @@ function AssetTable({ assets, isLoading, error, onAssetClick, royaltyTotalsMap, 
                                             src={getImageUrl(asset)} 
                                             alt={`Preview of ${asset.title || 'Untitled Asset'}`}
                                             className="w-full h-full object-cover" 
-                                            onError={(e) => { e.target.onerror = null; e.target.src="/favicon.png"; }} 
+                                            onError={(e) => { e.target.onerror = null; e.target.src="/favicon.ico"; }} 
                                         />
                                     </div>
                                 </td>
@@ -378,6 +374,6 @@ function AssetTable({ assets, isLoading, error, onAssetClick, royaltyTotalsMap, 
     );
 }
 
-// Export WalletFilterForm sebagai sub-komponen statis
+// Export WalletFilterForm
 AssetTable.WalletFilterForm = WalletFilterForm;
 export default AssetTable;

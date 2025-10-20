@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 
 
-const API_BASE_URL = 'http://localhost:3001/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
 const ChildrenList = ({ ipId, isOpen, totalCount }) => {
     const [children, setChildren] = useState([]);
@@ -209,7 +209,7 @@ const ChildrenList = ({ ipId, isOpen, totalCount }) => {
                                         alt={child.name || 'Derivative Work'}
                                         className="w-full h-full object-cover"
                                         onError={(e) => {
-                                            e.target.src = '/favicon.png';
+                                            e.target.src = '/favicon.ico';
                                         }}
                                     />
                                 </div>
@@ -288,38 +288,32 @@ const ChildrenList = ({ ipId, isOpen, totalCount }) => {
     );
 };
 
-// Helper function untuk mendapatkan URL gambar
+// Helper function
 const getImageUrl = (asset) => {
-    if (!asset) return '/favicon.png';
+    if (!asset) return '/favicon.ico';
     
-    // Cek metadata untuk URL gambar
     const metadata = asset.nftMetadata?.raw?.metadata;
     if (metadata?.image) {
         return metadata.image;
     }
     
-    // Cek metadata alternatif
     if (asset.metadata?.image) {
         return asset.metadata.image;
     }
     
-    // Cek di level asset langsung
     if (asset.image) {
         return asset.image;
     }
     
-    // Cek di nftMetadata
     if (asset.nftMetadata?.image) {
         return asset.nftMetadata.image;
     }
     
-    // Cek di raw metadata
     if (asset.nftMetadata?.raw?.image) {
         return asset.nftMetadata.raw.image;
     }
     
-    // Fallback ke favicon
-    return '/favicon.png';
+    return '/favicon.ico';
 };
 
 export default ChildrenList;

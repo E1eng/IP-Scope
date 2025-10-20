@@ -24,7 +24,7 @@ const QuickStats = ({ ownerAddress, searchResults = [], isLoading = false }) => 
     );
   }
 
-  // Hitung stats langsung dari searchResults tanpa fetch tambahan dan tanpa konversi USDT
+  
   const stats = useMemo(() => {
     if (!ownerAddress || !searchResults || searchResults.length === 0) {
       return {
@@ -64,7 +64,6 @@ const QuickStats = ({ ownerAddress, searchResults = [], isLoading = false }) => 
 
       totalEarningsWip = currencyBreakdown.WIP ? Number(currencyBreakdown.WIP.toFixed(6)) : 0;
 
-      // Hitung dispute dari searchResults (asset.disputeStatus)
       let totalDisputes = 0;
       for (const asset of searchResults) {
         const st = (asset?.disputeStatus || '').toLowerCase();

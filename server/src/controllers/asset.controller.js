@@ -6,23 +6,33 @@ const service = require('../services/storyProtocol.service.js');
  * Returns { data: [...], pagination: { total, limit, offset } }
  */
 const searchAssets = async (req, res) => {
+  const requestStart = Date.now();
+  const timestamp = new Date().toISOString();
+  
   try {
     const owner = req.query.ownerAddress || null;
     const tokenContract = req.query.tokenContract || null;
     const limit = req.query.limit ? parseInt(req.query.limit, 10) : 20;
     const offset = req.query.offset ? parseInt(req.query.offset, 10) : 0;
 
+    console.log(`[BACKEND] SEARCH_START timestamp=${timestamp} owner=${owner} limit=${limit} offset=${offset}`);
+    
     // service.getAssetsByOwner returns { data: [], pagination: {} }
+    console.log(`[BACKEND] CALLING_SERVICE owner=${owner} limit=${limit} offset=${offset} tokenContract=${tokenContract}`);
     const result = await service.getAssetsByOwner(owner, limit, offset, tokenContract);
+    console.log(`[BACKEND] SERVICE_RETURNED assets=${result.data?.length||0} degraded=${result.__degraded||false}`);
     // Soft-fail: if backend degraded due to timeout, return 202 Accepted-like hint
     if (result.__degraded) {
       return res.status(202).json({ data: result.data || [], pagination: result.pagination || { total: 0, limit, offset }, degraded: true });
     }
     // Ensure pagination shape
     const pagination = result.pagination || { total: (result.data || []).length, limit, offset };
+    const responseTime = Date.now() - requestStart;
+    console.log(`[BACKEND] SEARCH_COMPLETE time=${responseTime}ms assets=${result.data?.length||0} total=${pagination.total}`);
     return res.json({ data: result.data || [], pagination });
   } catch (e) {
-    console.error('[CONTROLLER] searchAssets error', e);
+    const responseTime = Date.now() - requestStart;
+    console.error(`[BACKEND] SEARCH_ERROR time=${responseTime}ms error=`, e);
     return res.status(500).json({ message: 'Internal server error', error: e.message });
   }
 };

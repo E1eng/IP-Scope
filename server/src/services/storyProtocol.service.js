@@ -1,7 +1,6 @@
 // server/src/services/storyProtocol.service.js
 // CommonJS style (require/module.exports)
 // Dependency: axios
-console.log('[SERVICE] StoryProtocol service loaded with updated code');
 const axios = require('axios');
 const Decimal = require('decimal.js');
 
@@ -31,9 +30,95 @@ axios.defaults.httpAgent = httpAgent;
 axios.defaults.httpsAgent = httpsAgent;
 axios.defaults.timeout = 5000; // 5 second default timeout
 
-// Simple in-memory caches
-const royaltyDataCache = new Map(); // ipId -> { totalRoyaltiesByToken, licenseeMap }
-const royaltyProgressByIp = new Map(); // Retained for internal tracking (no external route)
+// Royalty progress tracking removed for production; keep logs only
+
+// ---------------------------------------------
+// Royalty cache (TTL optional + simple pruning)
+// ---------------------------------------------
+const royaltyDataCache = global.__royaltyDataCache || new Map();
+const royaltyDataTimestamps = global.__royaltyDataTimestamps || new Map();
+global.__royaltyDataCache = royaltyDataCache;
+global.__royaltyDataTimestamps = royaltyDataTimestamps;
+
+const ROYALTY_CACHE_TTL_MS = (() => {
+    const v = parseInt(process.env.ROYALTY_CACHE_TTL_MS || '0', 10);
+    return Number.isFinite(v) && v > 0 ? v : 0; // 0 = no TTL
+})();
+
+const ROYALTY_CACHE_MAX = (() => {
+    const v = parseInt(process.env.ROYALTY_CACHE_MAX || '0', 10);
+    return Number.isFinite(v) && v > 0 ? v : 0; // 0 = no cap
+})();
+
+function setRoyaltyCache(key, value) {
+    try {
+        royaltyDataCache.set(key, value);
+        royaltyDataTimestamps.set(key, Date.now());
+        if (ROYALTY_CACHE_MAX && royaltyDataCache.size > ROYALTY_CACHE_MAX) {
+            pruneRoyaltyCacheToMax();
+        }
+    } catch {}
+}
+
+function getRoyaltyCache(key) {
+    try {
+        if (!royaltyDataCache.has(key)) return undefined;
+        if (ROYALTY_CACHE_TTL_MS) {
+            const ts = royaltyDataTimestamps.get(key) || 0;
+            if (ts && Date.now() - ts > ROYALTY_CACHE_TTL_MS) {
+                royaltyDataCache.delete(key);
+                royaltyDataTimestamps.delete(key);
+                return undefined;
+            }
+        }
+        return royaltyDataCache.get(key);
+    } catch {
+        return undefined;
+    }
+}
+
+function touchRoyaltyCache(key) {
+    try {
+        if (royaltyDataCache.has(key)) {
+            royaltyDataTimestamps.set(key, Date.now());
+        }
+    } catch {}
+}
+
+function pruneRoyaltyCacheToMax() {
+    try {
+        if (!ROYALTY_CACHE_MAX || royaltyDataCache.size <= ROYALTY_CACHE_MAX) return;
+        // Evict oldest entries by timestamp
+        const entries = [];
+        for (const [k, t] of royaltyDataTimestamps.entries()) {
+            entries.push([k, t || 0]);
+        }
+        entries.sort((a, b) => a[1] - b[1]);
+        const needToRemove = royaltyDataCache.size - ROYALTY_CACHE_MAX;
+        for (let i = 0; i < needToRemove && i < entries.length; i++) {
+            const key = entries[i][0];
+            royaltyDataCache.delete(key);
+            royaltyDataTimestamps.delete(key);
+        }
+    } catch {}
+}
+
+function clearRoyaltyCache(olderThanMs = 0) {
+    try {
+        if (!olderThanMs) {
+            royaltyDataCache.clear();
+            royaltyDataTimestamps.clear();
+            return;
+        }
+        const now = Date.now();
+        for (const [k, t] of royaltyDataTimestamps.entries()) {
+            if (!t || now - t >= olderThanMs) {
+                royaltyDataTimestamps.delete(k);
+                royaltyDataCache.delete(k);
+            }
+        }
+    } catch {}
+}
 
 /**
  * Utility: Mengubah BigInt wei ke string readable (sesuai style kamu).
@@ -273,16 +358,22 @@ const acquireApiToken = async () => {
     }
 };
 const limitedStoryApiRequest = async (options, retries = 1) => {
-    await acquireApiToken();
+    const DBG = process.env.DEBUG_ROYALTY_FLOW === '1';
+    const t0 = DBG ? Date.now() : 0;
     try {
         const response = await axios({
             ...options,
-            timeout: 20000, // Increased timeout for Story Protocol API
+            timeout: options.timeout || 12000, // Use the timeout from options
             headers: {
                 ...options.headers,
                 'User-Agent': 'RoyaltyFlow/1.0 (Story Protocol Rate Limited)'
             }
         });
+        if (DBG) {
+            const url = options?.url || '';
+            const kind = url.includes('transactions') ? 'STORY_API_TX' : (url.includes('assets') ? 'STORY_API_ASSETS' : 'STORY_API');
+            console.log(`[ROYALTY][${kind}] OK in ${Date.now()-t0}ms url=${url}`);
+        }
         
         // Log rate limit headers for monitoring
         const remaining = response.headers['x-ratelimit-remaining'];
@@ -293,11 +384,15 @@ const limitedStoryApiRequest = async (options, retries = 1) => {
         
         return response;
     } catch (e) {
+        if (DBG) {
+            const url = options?.url || '';
+            console.log(`[ROYALTY][STORY_API] FAIL in ${Date.now()-t0}ms url=${url} status=${e.response?.status||'N/A'} msg=${e.message}`);
+        }
         const status = e.response?.status;
         // Handle 429 from Story API with small backoff
         if (status === 429 && retries > 0) {
             const retryAfter = e.response?.headers['retry-after'];
-            const backoffMs = retryAfter ? parseInt(retryAfter) * 1000 : (200 * (2 - retries) + Math.floor(Math.random() * 100));
+            const backoffMs = retryAfter ? parseInt(retryAfter) * 1000 : 120; // minimal backoff
             console.log(`[STORYAPI] Rate limited, waiting ${backoffMs}ms before retry`);
             await sleep(backoffMs);
             return limitedStoryApiRequest(options, retries - 1);
@@ -382,6 +477,45 @@ const getDisputeStatusFromTransactions = async (ipId) => {
         const evs = await fetchDisputeEventsForIpIdPaginated(ipId, 200);
         return deriveDisputeStatusFromEvents(evs);
     } catch { return null; }
+};
+
+// Batch fetch dispute events for multiple IP IDs
+const fetchDisputeEventsForMultipleIpIds = async (ipIds) => {
+    if (!ipIds || ipIds.length === 0) return [];
+    
+    try {
+        const body = {
+            where: { 
+                eventTypes: ["DisputeRaised", "DisputeResolved"], 
+                ipIds: ipIds.filter(Boolean) 
+            },
+            pagination: { limit: 200, offset: 0 }
+        };
+        
+        const resp = await fetchStoryApi(STORY_TRANSACTIONS_API_BASE_URL, storyApiKey, body, 'POST');
+        return resp.events || resp.data || [];
+    } catch (e) {
+        console.log(`[SERVICE] BATCH_DISPUTE_EVENTS_ERROR: ${e.message}`);
+        return [];
+    }
+};
+
+// Quick check if asset has royalty events (first page only)
+const quickCheckRoyaltyEvents = async (ipId) => {
+    try {
+        if (!ipId || !storyApiKey) return false;
+        
+        const body = {
+            where: { eventTypes: ["RoyaltyPaid"], ipIds: [ipId] },
+            pagination: { limit: 1, offset: 0 }
+        };
+        
+        const resp = await fetchStoryApi(STORY_TRANSACTIONS_API_BASE_URL, storyApiKey, body, 'POST');
+        const events = resp.events || resp.data || [];
+        return events.length > 0;
+    } catch (e) {
+        return false;
+    }
 };
 
 const getDisputesByWhere = async (where, limit = 10) => {
@@ -545,8 +679,14 @@ const startPortfolioAggregation = async (ownerAddress) => {
  * - returns normalized shape for assets and transactions
  */
 const fetchStoryApi = async (url, apiKey, body = {}, method = 'POST') => {
+    const DBG = process.env.DEBUG_ROYALTY_FLOW === '1';
     // Increase assets timeout; keep transactions short
-    const timeout = url.includes('transactions') ? 8000 : 40000;
+    const timeout = url.includes('transactions') ? 7000 : 15000;
+    
+    if (DBG) {
+        const kind = url.includes('transactions') ? 'STORY_API_TX' : (url.includes('assets') ? 'STORY_API_ASSETS' : 'STORY_API');
+        console.log(`[ROYALTY][${kind}] START url=${url} timeout=${timeout}ms`);
+    }
     
     const options = {
         method,
@@ -559,7 +699,7 @@ const fetchStoryApi = async (url, apiKey, body = {}, method = 'POST') => {
         timeout: timeout,
     };
 
-    const fetchWithRetry = async (opts, retries = 3, backoffMs = 500) => {
+    const fetchWithRetry = async (opts, retries = 1, backoffMs = 150) => {
         let attempt = 0;
         // eslint-disable-next-line no-constant-condition
         while (true) {
@@ -572,14 +712,19 @@ const fetchStoryApi = async (url, apiKey, body = {}, method = 'POST') => {
                 if (attempt >= retries || !retriable) throw err;
                 // backoff
                 // eslint-disable-next-line no-await-in-loop
-                await sleep(backoffMs * Math.pow(2, attempt));
+                await sleep(backoffMs);
                 attempt += 1;
             }
         }
     };
 
     try {
+        const t0 = DBG ? Date.now() : 0;
         const response = await fetchWithRetry(options);
+        if (DBG) {
+            const kind = url.includes(STORY_TRANSACTIONS_API_BASE_URL) ? 'TX_PAGE' : (url.includes(STORY_ASSETS_API_BASE_URL) ? 'ASSETS' : 'OTHER');
+            console.log(`[ROYALTY][STORY_API_${kind}] OK in ${Date.now()-t0}ms limit=${body?.pagination?.limit||'-'} offset=${body?.pagination?.offset||'-'}`);
+        }
         // The Story API sometimes uses .data.data or .data.events
         const respData = response.data || {};
         if (url.includes(STORY_ASSETS_API_BASE_URL)) {
@@ -651,8 +796,27 @@ const fetchRoyaltyEventsPaginated = async (ipId, pageSize = 200) => {
     for (const candidateId of candidates) {
         const allEvents = [];
         let offset = 0;
-        // Loop until API returns empty or less than pageSize
-        for (let page = 0; ; page++) {
+        // First page fetch
+        try {
+            const body0 = {
+                where: { eventTypes: ["RoyaltyPaid"], ipIds: [candidateId] },
+                pagination: { limit: pageSize, offset: 0 }
+            };
+            const resp0 = await fetchStoryApi(STORY_TRANSACTIONS_API_BASE_URL, storyApiKey, body0, 'POST');
+            const firstPage = resp0.events || resp0.data || [];
+            if (!firstPage || firstPage.length === 0) {
+                // Early-exit: no events for this candidate, try next candidate
+                continue;
+            }
+            allEvents.push(...firstPage);
+            offset += firstPage.length;
+        } catch (e) {
+            console.error(`[PAGINATION] First page failed for ${candidateId}: ${e.message}`);
+            continue;
+        }
+
+        // Next pages only if first page had data
+        for (let page = 1; ; page++) {
             const body = {
                 where: { eventTypes: ["RoyaltyPaid"], ipIds: [candidateId] },
                 pagination: { limit: pageSize, offset }
@@ -781,7 +945,7 @@ const getAndAggregateRoyaltyEventsFromApi = async (ipId) => {
     }
 
     const aggrStart = Date.now();
-    const DEBUG_ROYALTY_FLOW = true; // central toggle for royalty flow logs
+    const DEBUG_ROYALTY_FLOW = process.env.DEBUG_ROYALTY_FLOW === '1';
     if (DEBUG_ROYALTY_FLOW) console.log(`[ROYALTY] START ipId=${ipId}`);
 
     // Normalize ipId to checksum if possible, but still try AS-IS + lowercase fallback in loop below
@@ -814,6 +978,7 @@ const getAndAggregateRoyaltyEventsFromApi = async (ipId) => {
     const inFlightPages = 3; // pipeline up to 3 pages concurrently
     while (hasMore) {
         const pageStartTs = Date.now();
+        if (DEBUG_ROYALTY_FLOW) console.log(`[ROYALTY] PAGE_START ipId=${idPrimary} page=${pageIndex} offset=${offset} inFlight=${inFlightPages}`);
         const reqs = [];
         for (let i = 0; i < inFlightPages; i++) {
             reqs.push(fetchStoryApi(STORY_TRANSACTIONS_API_BASE_URL, storyApiKey, buildRequest(idPrimary, offset + (i * 100), true), 'POST'));
@@ -827,9 +992,11 @@ const getAndAggregateRoyaltyEventsFromApi = async (ipId) => {
             }
         }
         let events = batchedEvents;
+        if (DEBUG_ROYALTY_FLOW) console.log(`[ROYALTY] PAGE_RESULT ipId=${idPrimary} page=${pageIndex} events=${events.length} time=${Date.now()-pageStartTs}ms`);
 
         // If no events with original case, try lowercase
         if ((!events || events.length === 0) && idPrimary.toLowerCase() !== idPrimary && offset === 0) {
+            if (DEBUG_ROYALTY_FLOW) console.log(`[ROYALTY] FALLBACK_LOWERCASE ipId=${idPrimary} trying lowercase`);
             const reqs2 = [];
             for (let i = 0; i < inFlightPages; i++) {
                 reqs2.push(fetchStoryApi(STORY_TRANSACTIONS_API_BASE_URL, storyApiKey, buildRequest(idPrimary.toLowerCase(), offset + (i * 100), true), 'POST'));
@@ -843,7 +1010,8 @@ const getAndAggregateRoyaltyEventsFromApi = async (ipId) => {
                 }
             }
             events = be2;
-        }
+            if (DEBUG_ROYALTY_FLOW) console.log(`[ROYALTY] FALLBACK_RESULT ipId=${idPrimary} events=${events.length}`);
+    }
 
     if (!events || events.length === 0) {
             hasMore = false;
@@ -852,15 +1020,15 @@ const getAndAggregateRoyaltyEventsFromApi = async (ipId) => {
             totalFetched += events.length;
             // Incremental cache write for events
             try {
-                const existingPrimary = royaltyDataCache.get(idPrimary) || { events: [], detailed: [] };
-                royaltyDataCache.set(idPrimary, { events: allEvents.slice(), detailed: existingPrimary.detailed || [] });
+                const existingPrimary = getRoyaltyCache(idPrimary) || { events: [], detailed: [] };
+                setRoyaltyCache(idPrimary, { events: allEvents.slice(), detailed: existingPrimary.detailed || [] });
                 const lowerKey = idPrimary.toLowerCase();
-                const existingLower = royaltyDataCache.get(lowerKey) || { events: [], detailed: [] };
-                royaltyDataCache.set(lowerKey, { events: allEvents.slice(), detailed: existingLower.detailed || [] });
+                const existingLower = getRoyaltyCache(lowerKey) || { events: [], detailed: [] };
+                setRoyaltyCache(lowerKey, { events: allEvents.slice(), detailed: existingLower.detailed || [] });
             } catch {}
             if (DEBUG_ROYALTY_FLOW) {
                 const elapsed = Date.now() - pageStartTs;
-                console.log(`[ROYALTY] PAGE ipId=${idPrimary} page=${pageIndex} offset=${offset} fetched=${events.length} elapsedMs=${elapsed}`);
+                console.log(`[ROYALTY] PAGE_DONE ipId=${idPrimary} page=${pageIndex} offset=${offset} fetched=${events.length} total=${allEvents.length} elapsedMs=${elapsed}`);
             }
             
             // If we got less than the limit, we've reached the end
@@ -873,8 +1041,8 @@ const getAndAggregateRoyaltyEventsFromApi = async (ipId) => {
         }
     }
 
-    // Optional fallback: try without eventTypes filter if enabled via env
-    if (allEvents.length === 0 && process.env.FALLBACK_NO_EVENTTYPES === '1') {
+    // Optional fallback DISABLED for small cases: do not widen when first page is empty
+    if (false && allEvents.length === 0 && process.env.FALLBACK_NO_EVENTTYPES === '1') {
         if (DEBUG_ROYALTY_FLOW) console.log(`[ROYALTY] FALLBACK_NO_EVENTTYPES ipId=${idPrimary} enabled`);
         let offset2 = 0; let hasMore2 = true; let pageIndex2 = 0; let fetched2 = 0;
         while (hasMore2) {
@@ -906,7 +1074,6 @@ const getAndAggregateRoyaltyEventsFromApi = async (ipId) => {
 
     // Fetch StoryScan details using worker pool + queue with 24 workers (8 per API key x 3)
     if (DEBUG_ROYALTY_FLOW) console.log(`[ROYALTY] SCAN_BEGIN ipId=${idPrimary} txCount=${events.length}`);
-    royaltyProgressByIp.set(idPrimary, { total: events.length, processed: 0, ok: 0, fail: 0, startedAt: Date.now() });
     const txHashes = events
         .map(ev => ev.transactionHash || ev.txHash || ev.hash || ev.transaction?.hash)
         .filter(Boolean);
@@ -929,12 +1096,12 @@ const getAndAggregateRoyaltyEventsFromApi = async (ipId) => {
             try {
                 const keyA = idPrimary;
                 const keyB = idPrimary.toLowerCase();
-                const curA = royaltyDataCache.get(keyA) || { events: allEvents.slice(), detailed: [] };
+                const curA = getRoyaltyCache(keyA) || { events: allEvents.slice(), detailed: [] };
                 curA.detailed = (curA.detailed || []).concat([res]);
-                royaltyDataCache.set(keyA, curA);
-                const curB = royaltyDataCache.get(keyB) || { events: allEvents.slice(), detailed: [] };
+                setRoyaltyCache(keyA, curA);
+                const curB = getRoyaltyCache(keyB) || { events: allEvents.slice(), detailed: [] };
                 curB.detailed = (curB.detailed || []).concat([res]);
-                royaltyDataCache.set(keyB, curB);
+                setRoyaltyCache(keyB, curB);
             } catch {}
         }
     });
@@ -984,9 +1151,9 @@ const getAndAggregateRoyaltyEventsFromApi = async (ipId) => {
 
     const aggrElapsed = Date.now() - aggrStart;
     if (totalEthWei > 0n) {
-        if (DEBUG_ROYALTY_FLOW) console.log(`[ROYALTY] RESULT ipId=${ipId} SUCCESS totalEthWei=${totalEthWei.toString()} elapsedMs=${aggrElapsed}`);
+        if (DEBUG_ROYALTY_FLOW) console.log(`[ROYALTY] RESULT ipId=${ipId} SUCCESS totalEthWei=${totalEthWei.toString()} totalEvents=${allEvents.length} elapsedMs=${aggrElapsed}`);
     } else {
-        if (DEBUG_ROYALTY_FLOW) console.log(`[ROYALTY] RESULT ipId=${ipId} EMPTY elapsedMs=${aggrElapsed}`);
+        if (DEBUG_ROYALTY_FLOW) console.log(`[ROYALTY] RESULT ipId=${ipId} EMPTY totalEvents=${allEvents.length} elapsedMs=${aggrElapsed}`);
     }
 
     return { totalRoyaltiesByToken, licenseeMap };
@@ -1003,19 +1170,22 @@ const processTxHashesWithWorkerPool = async (
     {
         pageSize = 50,
         workerCount = 24,
-        perWorkerIntervalMs = 1000,
-        timeoutMs = 60000
+        perWorkerIntervalMs = 100, // Much faster for small batches
+        timeoutMs = 8000 // Reduced timeout
     } = {}
 ) => {
     if (!Array.isArray(txHashes) || txHashes.length === 0) return [];
 
     const results = [];
-    const DEBUG_ROYALTY_FLOW = true;
+    const DEBUG_ROYALTY_FLOW = process.env.DEBUG_ROYALTY_FLOW === '1';
+    const startTime = DEBUG_ROYALTY_FLOW ? Date.now() : 0;
+    if (DEBUG_ROYALTY_FLOW) console.log(`[ROYALTY] WORKER_START total=${txHashes.length} workers=${workerCount} interval=${perWorkerIntervalMs}ms timeout=${timeoutMs}ms`);
 
     // Process in pages of 50 for stability
     for (let pageStart = 0; pageStart < txHashes.length; pageStart += pageSize) {
         const page = txHashes.slice(pageStart, pageStart + pageSize);
         if (DEBUG_ROYALTY_FLOW) console.log(`[ROYALTY] WORK_PAGE start=${pageStart} size=${page.length} workers=${Math.min(workerCount, page.length)}`);
+        const pageStartTime = DEBUG_ROYALTY_FLOW ? Date.now() : 0;
 
         // Simple FIFO queue for this page
         const queue = page.slice();
@@ -1027,19 +1197,13 @@ const processTxHashesWithWorkerPool = async (
                 const txHash = queue.shift();
                 if (!txHash) break;
 
+                const txStartTime = DEBUG_ROYALTY_FLOW ? Date.now() : 0;
                 try {
                     // Check cache first
                     const cached = getTxDetailCache(txHash);
                     if (cached) {
                         results.push({ txHash, detail: cached });
-                        // update progress
-                        try {
-                            for (const [ip, prog] of royaltyProgressByIp.entries()) {
-                                royaltyProgressByIp.set(ip, { ...prog, processed: prog.processed + 1, ok: prog.ok + 1 });
-                                break;
-                            }
-                        } catch {}
-                        if (DEBUG_ROYALTY_FLOW) console.log(`[ROYALTY] HIT_CACHE tx=${txHash}`);
+                        if (DEBUG_ROYALTY_FLOW) console.log(`[ROYALTY] HIT_CACHE tx=${txHash.substring(0,10)} in ${Date.now()-txStartTime}ms`);
                     } else {
                         const controller = new AbortController();
                         const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -1047,22 +1211,10 @@ const processTxHashesWithWorkerPool = async (
                             const detail = await fetchTransactionDetailFromStoryScan(txHash, { signal: controller.signal });
                             setTxDetailCache(txHash, detail);
                             results.push({ txHash, detail });
-                            try {
-                                for (const [ip, prog] of royaltyProgressByIp.entries()) {
-                                    royaltyProgressByIp.set(ip, { ...prog, processed: prog.processed + 1, ok: prog.ok + 1 });
-                                    break;
-                                }
-                            } catch {}
-                            if (DEBUG_ROYALTY_FLOW) console.log(`[ROYALTY] OK tx=${txHash}`);
+                            if (DEBUG_ROYALTY_FLOW) console.log(`[ROYALTY] OK tx=${txHash.substring(0,10)} in ${Date.now()-txStartTime}ms`);
                         } catch (e) {
                             results.push({ txHash, detail: { amount: 0n, decimals: 18, symbol: 'ETH', tokenAddress: null, exchangeRateUsd: null, from: null } });
-                            try {
-                                for (const [ip, prog] of royaltyProgressByIp.entries()) {
-                                    royaltyProgressByIp.set(ip, { ...prog, processed: prog.processed + 1, fail: prog.fail + 1 });
-                                    break;
-                                }
-                            } catch {}
-                            if (DEBUG_ROYALTY_FLOW) console.log(`[ROYALTY] FAIL tx=${txHash} err=${e?.message || 'unknown'}`);
+                            if (DEBUG_ROYALTY_FLOW) console.log(`[ROYALTY] FAIL tx=${txHash.substring(0,10)} in ${Date.now()-txStartTime}ms err=${e?.message || 'unknown'}`);
                         } finally {
                             clearTimeout(timeout);
                         }
@@ -1085,9 +1237,10 @@ const processTxHashesWithWorkerPool = async (
         }
 
         await Promise.all(workerPromises);
-        if (DEBUG_ROYALTY_FLOW) console.log(`[ROYALTY] WORK_PAGE_DONE start=${pageStart} accumulated=${results.length}`);
+        if (DEBUG_ROYALTY_FLOW) console.log(`[ROYALTY] WORK_PAGE_DONE start=${pageStart} accumulated=${results.length} pageTime=${Date.now()-pageStartTime}ms`);
     }
 
+    if (DEBUG_ROYALTY_FLOW) console.log(`[ROYALTY] WORKER_COMPLETE total=${results.length} totalTime=${Date.now()-startTime}ms`);
     return results;
 };
 
@@ -1117,13 +1270,28 @@ const detectMediaTypeFromIpfs = async (uri) => {
 };
 
 const getAssetsByOwner = async (ownerAddress, limit = 200, offset = 0, tokenContract) => {
+    const serviceStart = Date.now();
+    const DEBUG_ROYALTY_FLOW = process.env.DEBUG_ROYALTY_FLOW === '1';
+    
+    console.log(`[SERVICE] ENTRY owner=${ownerAddress} limit=${limit} offset=${offset} tokenContract=${tokenContract}`);
+    
     if (!storyApiKey) {
+        console.log(`[SERVICE] ERROR: STORY_PROTOCOL_API_KEY missing`);
         throw new Error("STORY_PROTOCOL_API_KEY is not set in environment variables.");
     }
     const key = `${ownerAddress || ''}|${tokenContract || ''}|${limit}|${offset}`;
+    console.log(`[SERVICE] CACHE_CHECK key=${key}`);
     const cached = assetsCacheGet(key);
-    if (cached) return cached;
-    if (assetsInFlightByKey.has(key)) return await assetsInFlightByKey.get(key);
+    if (cached) {
+        console.log(`[SERVICE] CACHE_HIT owner=${ownerAddress} time=${Date.now()-serviceStart}ms`);
+        return cached;
+    }
+    console.log(`[SERVICE] CACHE_MISS checking inFlight`);
+    if (assetsInFlightByKey.has(key)) {
+        console.log(`[SERVICE] INFLIGHT_WAIT owner=${ownerAddress}`);
+        return await assetsInFlightByKey.get(key);
+    }
+    console.log(`[SERVICE] NOT_INFLIGHT proceeding with API call`);
     const whereClause = {};
     if (ownerAddress) whereClause.ownerAddress = ownerAddress.trim();
     if (tokenContract) {
@@ -1131,10 +1299,14 @@ const getAssetsByOwner = async (ownerAddress, limit = 200, offset = 0, tokenCont
         if (cleaned) whereClause.tokenContract = cleaned;
     }
 
-    if (Object.keys(whereClause).length === 0) return { data: [], pagination: { total: 0 } };
+    if (Object.keys(whereClause).length === 0) {
+        console.log(`[SERVICE] EMPTY_WHERE_CLAUSE returning empty result`);
+        return { data: [], pagination: { total: 0 } };
+    }
 
     // Use maximum limit for better performance
     const optimizedLimit = Math.min(limit, 200);
+    console.log(`[SERVICE] BUILDING_REQUEST optimizedLimit=${optimizedLimit} whereClause=`, whereClause);
     
     const requestBody = {
         includeLicenses: true,
@@ -1144,10 +1316,15 @@ const getAssetsByOwner = async (ownerAddress, limit = 200, offset = 0, tokenCont
         pagination: { limit: optimizedLimit, offset },
         where: whereClause
     };
+    console.log(`[SERVICE] REQUEST_BODY ready, calling fetchStoryApi`);
+    console.log(`[SERVICE] API_URL=${STORY_ASSETS_API_BASE_URL} API_KEY=${storyApiKey ? 'SET' : 'MISSING'}`);
 
     let resp;
     const promise = (async () => {
+        if (DEBUG_ROYALTY_FLOW) console.log(`[SERVICE] ASSETS_FETCH_START owner=${ownerAddress} limit=${optimizedLimit} offset=${offset}`);
+        console.log(`[SERVICE] CALLING_FETCH_STORY_API`);
         resp = await fetchStoryApi(STORY_ASSETS_API_BASE_URL, storyApiKey, requestBody, 'POST');
+        console.log(`[SERVICE] FETCH_STORY_API_RETURNED`);
 
         // Fallbacks if empty: try lowercase variants and ipId direct lookup
         let data = resp.data || [];
@@ -1200,12 +1377,15 @@ const getAssetsByOwner = async (ownerAddress, limit = 200, offset = 0, tokenCont
 
         // Enrich disputes status and mediaType via IPFS
         data = data || [];
+        console.log(`[SERVICE] PROCESSING_DATA assets=${data.length}`);
         try {
             const dispReq = {
                 where: { ipIds: data.map(a => a.ipId).filter(Boolean) },
                 pagination: { limit: data.length || 50 }
             };
+            console.log(`[SERVICE] FETCHING_DISPUTES ipIds=${data.map(a => a.ipId).filter(Boolean).length}`);
             const dispResp = await fetchStoryApi(STORY_DISPUTES_API_BASE_URL, storyApiKey, dispReq, 'POST');
+            console.log(`[SERVICE] DISPUTES_FETCHED`);
             const dispItems = dispResp.data || dispResp.disputes || [];
             const ipToStatus = new Map();
             for (const d of dispItems) {
@@ -1213,14 +1393,45 @@ const getAssetsByOwner = async (ownerAddress, limit = 200, offset = 0, tokenCont
                 const status = d?.status || d?.state || 'Active';
                 if (ip) ipToStatus.set(ip, status);
             }
-            for (const a of data) {
-                if (ipToStatus.has(a.ipId)) a.disputeStatus = ipToStatus.get(a.ipId);
-                if (!a.disputeStatus || a.disputeStatus === 'None') {
-                    try {
-                        const fb = await getDisputeStatusFromTransactions(a.ipId);
-                        if (fb) a.disputeStatus = fb;
-                    } catch {}
+            // Batch process dispute events for all assets at once
+            const assetsNeedingDisputeCheck = data.filter(a => !ipToStatus.has(a.ipId) || !a.disputeStatus || a.disputeStatus === 'None');
+            if (assetsNeedingDisputeCheck.length > 0) {
+                console.log(`[SERVICE] BATCH_DISPUTE_EVENTS assets=${assetsNeedingDisputeCheck.length}`);
+                try {
+                    // Fetch dispute events for all assets in one batch
+                    const disputeEvents = await fetchDisputeEventsForMultipleIpIds(assetsNeedingDisputeCheck.map(a => a.ipId));
+                    console.log(`[SERVICE] BATCH_DISPUTE_EVENTS_COMPLETE events=${disputeEvents.length}`);
+                    
+                    // Map dispute events to assets
+                    const ipToDisputeStatus = new Map();
+                    for (const event of disputeEvents) {
+                        const ipId = event.ipId;
+                        if (ipId && !ipToDisputeStatus.has(ipId)) {
+                            const status = deriveDisputeStatusFromEvents([event]);
+                            if (status) ipToDisputeStatus.set(ipId, status);
+                        }
+                    }
+                    
+                    // Apply dispute status to assets
+                    for (const a of data) {
+                        if (ipToStatus.has(a.ipId)) {
+                            a.disputeStatus = ipToStatus.get(a.ipId);
+                        } else if (ipToDisputeStatus.has(a.ipId)) {
+                            a.disputeStatus = ipToDisputeStatus.get(a.ipId);
+                        }
+                    }
+                } catch (e) {
+                    console.log(`[SERVICE] BATCH_DISPUTE_ERROR: ${e.message}`);
                 }
+            } else {
+                // Apply existing dispute status
+                for (const a of data) {
+                    if (ipToStatus.has(a.ipId)) a.disputeStatus = ipToStatus.get(a.ipId);
+                }
+            }
+            
+            // Process image URLs for all assets
+            for (const a of data) {
                 // Simple image URL normalization - ensure both imageUrl and nftMetadata.image.cachedUrl
                 if (a.uri) {
                     // Always set imageUrl
@@ -1241,19 +1452,10 @@ const getAssetsByOwner = async (ownerAddress, limit = 200, offset = 0, tokenCont
                     }
                 }
                 
-                // If mediaType missing or UNKNOWN, try detect via uri
-                const currentMedia = (a.mediaType || '').toUpperCase();
-                const uri = a?.nftMetadata?.image?.cachedUrl || a?.uri;
-                if ((!currentMedia || currentMedia === 'UNKNOWN') && uri) {
-                    try {
-                        const ct = await detectMediaTypeFromIpfs(uri);
-                        if (ct) {
-                            if (ct.startsWith('image/')) a.mediaType = 'IMAGE';
-                            else if (ct.startsWith('video/')) a.mediaType = 'VIDEO';
-                            else if (ct.startsWith('audio/')) a.mediaType = 'AUDIO';
-                            else a.mediaType = ct.toUpperCase();
-                        }
-                    } catch {}
+                // Skip image processing for search results to improve performance
+                // Image processing will be done in detail view if needed
+                if (!a.mediaType || a.mediaType === 'UNKNOWN') {
+                    a.mediaType = 'UNKNOWN'; // Keep as UNKNOWN for search results
                 }
                 
                 // Set default royalty and analytics to 0, will be updated in batch processing
@@ -1264,13 +1466,57 @@ const getAssetsByOwner = async (ownerAddress, limit = 200, offset = 0, tokenCont
             // ignore disputes enrich failure
         }
 
-        // Use individual asset detail logic for all assets to ensure consistency
+        // Use batch royalty processing for better performance
         if (data && data.length > 0) {
+            console.log(`[SERVICE] STARTING_BATCH_ROYALTY_PROCESSING assets=${data.length}`);
             try {
-                // Process each asset individually using the same logic as getAssetDetails
+                // Pre-filter assets that might have royalty (check first page of events)
+                console.log(`[SERVICE] PRE_FILTERING_ASSETS assets=${data.length}`);
+                const assetsWithRoyalty = [];
+                const assetsWithoutRoyalty = [];
+                
+                // Quick check for each asset (first page only)
                 for (const asset of data) {
                     try {
-                        const { totalRoyaltiesByToken } = await getAndAggregateRoyaltyEventsFromApi(asset.ipId);
+                        const hasEvents = await quickCheckRoyaltyEvents(asset.ipId);
+                        if (hasEvents) {
+                            assetsWithRoyalty.push(asset);
+                        } else {
+                            assetsWithoutRoyalty.push(asset);
+                        }
+                    } catch (e) {
+                        // If check fails, assume no royalty
+                        assetsWithoutRoyalty.push(asset);
+                    }
+                }
+                
+                console.log(`[SERVICE] PRE_FILTER_RESULT withRoyalty=${assetsWithRoyalty.length} withoutRoyalty=${assetsWithoutRoyalty.length}`);
+                
+                // Set default values for assets without royalty
+                for (const asset of assetsWithoutRoyalty) {
+                    asset.totalRoyaltyCollected = '0.000000 WIP';
+                    asset.analytics = { totalRoyaltiesPaid: {} };
+                }
+                
+                // Process only assets with royalty in batches
+                if (assetsWithRoyalty.length > 0) {
+                    const batchSize = 5; // Process 5 assets at a time
+                    const batches = [];
+                    for (let i = 0; i < assetsWithRoyalty.length; i += batchSize) {
+                        batches.push(assetsWithRoyalty.slice(i, i + batchSize));
+                    }
+                    
+                    console.log(`[SERVICE] ROYALTY_BATCHES=${batches.length} batchSize=${batchSize} assetsWithRoyalty=${assetsWithRoyalty.length}`);
+                    
+                    for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+                    const batch = batches[batchIndex];
+                    console.log(`[SERVICE] PROCESSING_ROYALTY_BATCH ${batchIndex+1}/${batches.length} assets=${batch.length}`);
+                    
+                    // Process batch in parallel
+                    const batchPromises = batch.map(async (asset, assetIndex) => {
+                        try {
+                            const { totalRoyaltiesByToken } = await getAndAggregateRoyaltyEventsFromApi(asset.ipId);
+                            console.log(`[SERVICE] ROYALTY_COMPLETE batch=${batchIndex+1} asset=${assetIndex+1} ipId=${asset.ipId}`);
                         
                         // Initialize analytics object
                         asset.analytics = asset.analytics || {};
@@ -1306,10 +1552,16 @@ const getAssetsByOwner = async (ownerAddress, limit = 200, offset = 0, tokenCont
                         } else {
                             asset.totalRoyaltyCollected = '0.000000 WIP';
                         }
-                    } catch (e) {
-                        console.log(`[SERVICE] Asset ${asset.ipId} - Error: ${e.message}`);
-                        asset.totalRoyaltyCollected = '0.000000 WIP';
-                        asset.analytics = { totalRoyaltiesPaid: {} };
+                        } catch (e) {
+                            console.log(`[SERVICE] Asset ${asset.ipId} - Error: ${e.message}`);
+                            asset.totalRoyaltyCollected = '0.000000 WIP';
+                            asset.analytics = { totalRoyaltiesPaid: {} };
+                        }
+                    });
+                    
+                        // Wait for batch to complete
+                        await Promise.all(batchPromises);
+                        console.log(`[SERVICE] ROYALTY_BATCH_COMPLETE ${batchIndex+1}/${batches.length}`);
                     }
                 }
             } catch (e) {
@@ -1319,6 +1571,7 @@ const getAssetsByOwner = async (ownerAddress, limit = 200, offset = 0, tokenCont
 
         const result = { ...resp, data, __degraded: wasDegraded };
         assetsCacheSet(key, result);
+        if (DEBUG_ROYALTY_FLOW) console.log(`[SERVICE] ASSETS_FETCH_COMPLETE owner=${ownerAddress} assets=${data.length} time=${Date.now()-serviceStart}ms`);
         return result;
     })();
     assetsInFlightByKey.set(key, promise);
@@ -2477,8 +2730,9 @@ const getRoyaltyTransactions = async (ipId) => {
         })();
 
         for (const key of candidates) {
-            if (!royaltyDataCache.has(key)) continue;
-            const cachedData = royaltyDataCache.get(key);
+            const cachedData = getRoyaltyCache(key);
+            if (!cachedData) continue;
+            touchRoyaltyCache(key);
             console.log(`[SERVICE] Found cached royalty data for ${ipId}:`, cachedData);
             
             // Prefer detailed per-tx cache if available (more accurate ledger)
@@ -2540,31 +2794,19 @@ module.exports = {
     getAssetDetails,
     getRoyaltyTransactions,
     getTopLicensees,
-    fetchTransactionDetailFromStoryScan,
     getPortfolioStats,
     getPortfolioStatsFast, // Export fast mode function
     getAssetCountOnly, // Export count-only function
     getAndAggregateRoyaltyEventsFromApi,
-    formatWeiToEther,
-    // internal helpers for other modules (optional export)
-    formatTokenAmountWithDecimals,
-    computeUsdtValue,
-    formatUsdtCurrency,
-    fetchRoyaltyTxDetailsForAsset,
+    // keep analytics/leaderboard exports used by controllers/routes
     getAssetLeaderboard,
     getPortfolioLicensees,
     getAssetsStatusSummary,
-    // streaming/progress helpers
+    // streaming/progress helpers (routes use these)
     startPortfolioAggregation,
     getProgress,
     // expose rate-limited StoryScan GET for other modules (routes)
     limitedStoryScanGet,
-    // progress accessor for routes
-    __getRoyaltyProgress: (ipId) => {
-        if (!ipId) return { total: 0, processed: 0, ok: 0, fail: 0 };
-        const prog = royaltyProgressByIp.get(ipId) || { total: 0, processed: 0, ok: 0, fail: 0 };
-        return prog;
-    },
     // Analytics functions
     getAssetAnalytics,
     getAssetTransactionHistory,

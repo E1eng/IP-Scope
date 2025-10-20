@@ -517,10 +517,10 @@ return (
                 </button>
             </div>
             <div className="flex mt-4 border-b border-gray-700">
-                <button onClick={() => setActiveTab('details')} className={`py-2 px-5 font-semibold transition-colors ${activeTab === 'details' ? 'text-purple-400 border-b-2 border-purple-400' : 'text-gray-400 hover:text-white'}`}>Details</button>
-                <button onClick={() => setActiveTab('derivatives')} className={`py-2 px-5 font-semibold transition-colors ${activeTab === 'derivatives' ? 'text-purple-400 border-b-2 border-purple-400' : 'text-gray-400 hover:text-white'}`}>Derivative Works</button>
-                <button onClick={() => setActiveTab('ledger')} className={`py-2 px-5 font-semibold transition-colors ${activeTab === 'ledger' ? 'text-purple-400 border-b-2 border-purple-400' : 'text-gray-400 hover:text-white'}`}>Royalty Ledger</button>
-                <button onClick={() => setActiveTab('licensees')} className={`py-2 px-5 font-semibold transition-colors ${activeTab === 'licensees' ? 'text-purple-400 border-b-2 border-purple-400' : 'text-gray-400 hover:text-white'}`}>Top Licensees</button>
+                <button onClick={() => setActiveTab('details')} className={`py-2 px-5 font-semibold transition-colors ${activeTab === 'details' ? 'text-gray-100 border-b-2 border-gray-300' : 'text-gray-400 hover:text-gray-200'}`}>Details</button>
+                <button onClick={() => setActiveTab('derivatives')} className={`py-2 px-5 font-semibold transition-colors ${activeTab === 'derivatives' ? 'text-gray-100 border-b-2 border-gray-300' : 'text-gray-400 hover:text-gray-2'}`}>Derivative Works</button>
+                <button onClick={() => setActiveTab('ledger')} className={`py-2 px-5 font-semibold transition-colors ${activeTab === 'ledger' ? 'text-gray-100 border-b-2 border-gray-300' : 'text-gray-400 hover:text-gray-200'}`}>Royalty Ledger</button>
+                <button onClick={() => setActiveTab('licensees')} className={`py-2 px-5 font-semibold transition-colors ${activeTab === 'licensees' ? 'text-gray-100 border-b-2 border-gray-300' : 'text-gray-400 hover:text-gray-200'}`}>Top Licensees</button>
             </div>
         </header>
 
@@ -543,7 +543,7 @@ return (
                                 
                                 {/* Description */}
                                 <div className="flex-1">
-                                    <h3 className="text-lg font-semibold text-purple-300 mb-3">Description</h3>
+                            <h3 className="text-lg font-semibold text-gray-200 mb-3">Description</h3>
                                     <p className="text-gray-300 leading-relaxed">
                                         {currentAsset?.description || 'No description available.'}
                                     </p>
@@ -553,7 +553,7 @@ return (
                                         {(currentAsset?.nftMetadata?.raw?.metadata?.attributes && 
                                           currentAsset.nftMetadata.raw.metadata.attributes.length > 0) && (
                                             <div>
-                                                <span className="text-purple-300 font-medium">Attributes:</span>
+                                                <span className="text-gray-300 font-medium">Attributes:</span>
                                                 <div className="mt-1 flex flex-wrap gap-2">
                                                     {currentAsset.nftMetadata.raw.metadata.attributes.slice(0, 4).map((attr, index) => (
                                                         <span 
@@ -574,12 +574,12 @@ return (
                                         
                                         {currentAsset?.uri && (
                                             <div>
-                                                <span className="text-purple-300 font-medium">URI:</span>
+                                                <span className="text-gray-300 font-medium">URI:</span>
                                                 <a 
                                                     href={currentAsset.uri}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
-                                                    className="text-blue-400 hover:text-blue-300 ml-2 transition-colors break-all"
+                                                    className="text-gray-400 hover:text-gray-300 ml-2 transition-colors break-all"
                                                     title="View on IPFS"
                                                 >
                                                     {currentAsset.uri}
@@ -617,7 +617,7 @@ return (
             </div>
         </div>
         <footer className="p-6 flex-shrink-0 border-t border-purple-900/50">
-            <a href={`https://explorer.story.foundation/ipa/${currentAsset?.ipId}`} target="_blank" rel="noopener noreferrer" className="w-full text-center block p-3 font-bold bg-purple-600 rounded-lg hover:bg-purple-700 transition-colors text-white">
+            <a href={`https://explorer.story.foundation/ipa/${currentAsset?.ipId}`} target="_blank" rel="noopener noreferrer" className="w-full text-center block p-3 font-bold bg-gray-800 rounded-lg hover:bg-gray-700 transition-colors text-gray-100 border border-gray-700">
                 View on Explorer
             </a>
         </footer>

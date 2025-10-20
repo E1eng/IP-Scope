@@ -30,7 +30,10 @@ const WalletFilterForm = ({ onFetch, initialOwnerAddress, isSubmitting }) => {
     const handleSubmit = (e) => {
         e.preventDefault();
         const cleanedAddress = addressInput.trim();
+        const timestamp = new Date().toISOString();
 
+        console.log(`[FRONTEND] BUTTON_CLICK timestamp=${timestamp} address=${cleanedAddress}`);
+        
         if (!cleanedAddress) return;
 
         // onFetch akan mengatur global loading state di ExplorerPage
@@ -99,29 +102,29 @@ function AssetTable({ assets, isLoading, error, onAssetClick, royaltyTotalsMap, 
     };
     if (isLoading) {
         return (
-            <div className="text-center p-16 text-purple-400 flex flex-col items-center animate-fade-in">
+            <div className="text-center p-16 text-gray-300 flex flex-col items-center animate-fade-in">
                 <div className="relative mb-6">
                   <div className="loading-spinner w-12 h-12"></div>
                   <div className="pulse-ring"></div>
                 </div>
-                <h3 className="text-xl font-semibold mb-2">Loading Assets...</h3>
-                <p className="text-sm text-gray-400">Please wait while we fetch your data</p>
+                <h3 className="text-xl font-semibold mb-2">Loading assets…</h3>
+                <p className="text-sm text-gray-500">Fetching on-chain data</p>
             </div>
         );
     }
     
     if (error) {
         return (
-            <div className="glass-card p-8 border-red-500/30 bg-red-900/20 text-center animate-slide-down">
+            <div className="glass-card p-8 text-center animate-slide-down">
                 <div className="flex flex-col items-center space-y-4">
-                  <div className="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center">
-                    <svg className="w-8 h-8 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <div className="w-16 h-16 bg-gray-800/60 rounded-full flex items-center justify-center">
+                    <svg className="w-8 h-8 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
                     </svg>
                   </div>
                   <div>
-                    <h3 className="text-xl font-bold text-red-300 mb-2">Error Loading Assets</h3>
-                    <p className="text-red-200 font-mono text-sm break-words">{error}</p>
+                    <h3 className="text-xl font-semibold text-gray-100 mb-2">Error loading assets</h3>
+                    <p className="text-gray-400 font-mono text-sm break-words">{error}</p>
                   </div>
                 </div>
             </div>
@@ -132,13 +135,13 @@ function AssetTable({ assets, isLoading, error, onAssetClick, royaltyTotalsMap, 
         return (
             <div className="glass-card p-12 text-center animate-fade-in">
                 <div className="flex flex-col items-center space-y-4">
-                  <div className="w-20 h-20 bg-gray-700/30 rounded-full flex items-center justify-center">
-                    <svg className="w-10 h-10 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <div className="w-20 h-20 bg-gray-800/50 rounded-full flex items-center justify-center">
+                    <svg className="w-10 h-10 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.172 16.172a4 4 0 015.656 0M9 12h6m-6-4h6m2 5.291A7.962 7.962 0 0112 15c-2.34 0-4.29-1.009-5.824-2.709" />
                     </svg>
                   </div>
                   <div>
-                    <h3 className="text-xl font-semibold text-gray-300 mb-2">No Assets Found</h3>
+                    <h3 className="text-xl font-semibold text-gray-200 mb-2">No assets found</h3>
                     <p className="text-gray-500">No IP assets found for the specified owner wallet.</p>
                   </div>
                 </div>
@@ -184,7 +187,7 @@ function AssetTable({ assets, isLoading, error, onAssetClick, royaltyTotalsMap, 
                             </td>
                             <td className="p-6">
                                 <div className="max-w-xs">
-                                  <h3 className="font-semibold text-white group-hover:text-purple-300 transition-colors duration-300 truncate">
+                  <h3 className="font-semibold text-gray-100 group-hover:text-gray-200 transition-colors duration-300 truncate">
                                     {asset.title}
                                   </h3>
                                   <a
@@ -192,7 +195,7 @@ function AssetTable({ assets, isLoading, error, onAssetClick, royaltyTotalsMap, 
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     onClick={(e) => e.stopPropagation()}
-                                    className="text-sm text-blue-400 hover:text-blue-300 font-mono mt-1 transition-colors duration-200 hover:underline"
+                                    className="text-sm text-gray-400 hover:text-gray-300 font-mono mt-1 transition-colors duration-200 hover:underline"
                                     title={`View ${asset.ipId} on Story Protocol Explorer`}
                                   >
                                     {asset.ipId?.slice(0, 8)}...
@@ -200,7 +203,7 @@ function AssetTable({ assets, isLoading, error, onAssetClick, royaltyTotalsMap, 
                                 </div>
                             </td>
                             <td className="p-6">
-                                <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-blue-500/20 text-blue-300">
+                                <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-gray-800/60 text-gray-300 border border-gray-700/60">
                                     {asset.mediaType}
                                 </span>
                             </td>
@@ -214,7 +217,7 @@ function AssetTable({ assets, isLoading, error, onAssetClick, royaltyTotalsMap, 
                             <td className="p-6">
                                 <div className="text-right relative">
                                   <span 
-                                    className="font-bold text-green-400 text-lg cursor-pointer hover:text-green-300 transition-colors"
+                                    className="font-bold text-gray-100 text-lg cursor-pointer hover:text-gray-200 transition-colors"
                                     onMouseEnter={() => setHoveredAssetId(asset.ipId)}
                                     onMouseLeave={() => setHoveredAssetId(null)}
                                   >
@@ -231,18 +234,8 @@ function AssetTable({ assets, isLoading, error, onAssetClick, royaltyTotalsMap, 
                             </td>
                             {/* Dispute Status Cell */}
                             <td className="p-6">
-                                <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold
-                                    ${asset.disputeData?.activeDisputes > 0 ? 'bg-red-500/20 text-red-300 border border-red-500/30' : 
-                                    asset.disputeData?.pendingDisputes > 0 ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30' : 
-                                    asset.disputeData?.totalDisputes > 0 ? 'bg-orange-500/20 text-orange-300 border border-orange-500/30' :
-                                    'bg-green-500/20 text-green-300 border border-green-500/30'}`
-                                }>
-                                    <div className={`w-2 h-2 rounded-full mr-2 ${
-                                      asset.disputeData?.activeDisputes > 0 ? 'bg-red-400 animate-pulse' :
-                                      asset.disputeData?.pendingDisputes > 0 ? 'bg-yellow-400' :
-                                      asset.disputeData?.totalDisputes > 0 ? 'bg-orange-400' :
-                                      'bg-green-400'
-                                    }`}></div>
+                                <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold border border-gray-700/60 bg-gray-800/60 text-gray-300`}>
+                                    <div className={`w-2 h-2 rounded-full mr-2 bg-gray-500`}></div>
                                     {asset.disputeData?.totalDisputes > 0 ? 
                                         `${asset.disputeData.totalDisputes} Dispute${asset.disputeData.totalDisputes > 1 ? 's' : ''}` : 
                                         'No Disputes'

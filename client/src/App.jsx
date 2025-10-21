@@ -57,10 +57,10 @@ function Sidebar() {
                 {navItems.map((item, index) => {
                     const IconComponent = item.icon;
                     return (
-                        <NavLink
-                            key={item.to}
-                            to={item.to}
-                            className={({ isActive }) =>
+                    <NavLink
+                        key={item.to}
+                        to={item.to}
+                        className={({ isActive }) =>
                                 `flex items-center gap-4 px-6 py-4 rounded-2xl font-semibold transition-smooth group animate-slide-up focus-ring-primary ${
                                   isActive 
                                     ? 'bg-gradient-to-r from-indigo-600/20 to-purple-600/20 text-indigo-300 shadow-lg border border-indigo-500/30' 
@@ -136,7 +136,7 @@ function App() {
                       setMobileMenuOpen(true);
                       announceToScreenReader('Mobile menu opened');
                     }}
-                    className="lg:hidden fixed top-4 left-4 z-50 p-2.5 bg-gray-900/90 backdrop-blur-sm border border-gray-700 rounded-lg hover:bg-gray-800 transition-smooth shadow-xl focus-ring-primary"
+                    className="lg:hidden fixed top-5 left-4 z-50 p-2.5 bg-gray-900/90 backdrop-blur-sm border border-gray-700 rounded-lg hover:bg-gray-800 transition-smooth shadow-xl focus-ring-primary"
                     aria-label="Open mobile menu"
                     aria-expanded={false}
                     aria-controls="mobile-menu"

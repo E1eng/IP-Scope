@@ -12,23 +12,23 @@ const Skeleton = ({ className = '', children, ...props }) => (
 
 // Card Skeleton
 export const CardSkeleton = ({ className = '' }) => (
-  <div className={`bg-gray-900/50 border border-gray-800 rounded-lg overflow-hidden ${className}`}>
+  <div className={`bg-gray-900/50 border border-gray-800 rounded-lg overflow-hidden w-full ${className}`}>
     {/* Image Skeleton */}
-    <div className="aspect-square bg-gray-800 animate-pulse"></div>
+    <div className="aspect-square bg-gray-800 animate-pulse w-full"></div>
     
     {/* Content Skeleton */}
-    <div className="p-4 space-y-3">
-      <div className="space-y-2">
-        <Skeleton className="h-4 w-3/4 rounded"></Skeleton>
-        <Skeleton className="h-3 w-1/2 rounded"></Skeleton>
+    <div className="p-4 space-y-3 w-full">
+      <div className="space-y-2 w-full">
+        <Skeleton className="h-4 w-3/4 rounded max-w-full"></Skeleton>
+        <Skeleton className="h-3 w-1/2 rounded max-w-full"></Skeleton>
       </div>
       
-      <div className="space-y-2">
-        <Skeleton className="h-3 w-full rounded"></Skeleton>
-        <Skeleton className="h-3 w-2/3 rounded"></Skeleton>
+      <div className="space-y-2 w-full">
+        <Skeleton className="h-3 w-full rounded max-w-full"></Skeleton>
+        <Skeleton className="h-3 w-2/3 rounded max-w-full"></Skeleton>
       </div>
       
-      <div className="flex justify-between items-center pt-2">
+      <div className="flex justify-between items-center pt-2 w-full">
         <Skeleton className="h-4 w-16 rounded"></Skeleton>
         <Skeleton className="h-6 w-20 rounded"></Skeleton>
       </div>

@@ -136,7 +136,7 @@ function App() {
                       setMobileMenuOpen(true);
                       announceToScreenReader('Mobile menu opened');
                     }}
-                    className="lg:hidden fixed top-3 left-3 z-50 p-2 bg-gray-900/80 backdrop-blur-sm border border-gray-800 rounded-lg hover:bg-gray-800/80 transition-smooth shadow-lg focus-ring-primary"
+                    className="lg:hidden fixed top-4 left-4 z-50 p-2.5 bg-gray-900/90 backdrop-blur-sm border border-gray-700 rounded-lg hover:bg-gray-800 transition-smooth shadow-xl focus-ring-primary"
                     aria-label="Open mobile menu"
                     aria-expanded={false}
                     aria-controls="mobile-menu"

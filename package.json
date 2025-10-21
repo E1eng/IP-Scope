@@ -18,7 +18,8 @@
     "install:all": "npm install && cd server && npm install && cd ../client && npm install"
   },
   "devDependencies": {
-    "concurrently": "^8.2.2"
+    "concurrently": "^8.2.2",
+    "terser": "^5.44.0"
   },
   "keywords": [
     "story-protocol",

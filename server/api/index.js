@@ -8,17 +8,26 @@ dotenv.config();
 
 const app = express();
 
-// Middleware
-app.use(cors());
+// CORS configuration - allow all origins
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: false
+}));
+
+// Handle preflight requests
+app.options('*', cors());
+
 app.use(express.json());
 
 // Import routes
 const routes = require('../src/routes');
 
-// Use routes
+// Mount routes at /api
 app.use('/api', routes);
 
-// Health check endpoint
+// Root health check
 app.get('/', (req, res) => {
   res.json({ 
     message: 'IPScope API Server', 

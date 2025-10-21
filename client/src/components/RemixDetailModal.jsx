@@ -7,8 +7,9 @@ import { ModalSkeleton, TextSkeleton, ImageSkeleton } from './SkeletonComponents
 import { NoRoyaltyData, NoDerivatives, NoTransactions } from './EmptyState';
 import { getModalProps, getButtonProps, announceToScreenReader } from '../utils/accessibility';
 import { Link } from 'react-router-dom';
+import { getApiBaseUrl } from '../utils/api';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+const API_BASE_URL = getApiBaseUrl();
 
 // Helper 
 const getImageUrl = (asset) => {

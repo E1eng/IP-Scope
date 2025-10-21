@@ -7,6 +7,7 @@ import StatCard from '../components/StatCard';
 import QuickStats from '../components/QuickStats';
 import { CardSkeleton, StaggeredSkeleton } from '../components/SkeletonComponents';
 import { OptimisticButton, StatusIndicator } from '../components/OptimisticUpdates';
+import { buildApiUrl } from '../utils/api';
 import axios from 'axios';
 
 // Helper fallback logic
@@ -130,7 +131,7 @@ const ExplorerPage = () => {
       setCurrentTokenContract(query);
 
       // Fetch assets from real API
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001/api'}/assets?ownerAddress=${query}&limit=50&offset=0`);
+      const response = await fetch(buildApiUrl(`/assets?ownerAddress=${query}&limit=50&offset=0`));
       
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -179,7 +180,7 @@ const ExplorerPage = () => {
   const handleLoadMore = async () => {
     try {
       setIsLoading(true);
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001/api'}/assets?ownerAddress=${currentQuery}&limit=50&offset=${results.length}`);
+      const response = await fetch(buildApiUrl(`/assets?ownerAddress=${currentQuery}&limit=50&offset=${results.length}`));
       const data = await response.json();
       
       if (data.data && data.data.length > 0) {

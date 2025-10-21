@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom'; // FIX: Tambahkan useNavigate di sini
 import axios from 'axios';
 import RemixDetailModalContent from '../components/RemixDetailModal';
+import { getApiBaseUrl } from '../utils/api';
 
 // Komponen untuk menampilkan token breakdown di halaman detail
 const TokenBreakdownCard = ({ asset }) => {
@@ -98,7 +99,7 @@ const TokenBreakdownCard = ({ asset }) => {
     );
 }; 
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+const API_BASE_URL = getApiBaseUrl();
 
 function AssetDetailPage() {
     const { id } = useParams();
